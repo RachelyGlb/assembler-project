@@ -1,4 +1,5 @@
 #include "assembler.h"
+#include "preassembler.h"
 
 /* Check if a line is empty (contains only whitespace) */
 Boolean is_empty_line(const char *line) {
@@ -9,7 +10,7 @@ Boolean is_empty_line(const char *line) {
     }
     
     for (i = 0; line[i] != '\0' && line[i] != '\n'; i++) {
-        if (!isspace(line[i])) {
+        if (!isspace(line[i])&& (line[i] != '\n')&& line[i] != '\t') {
             return FALSE;
         }
     }
