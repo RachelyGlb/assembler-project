@@ -1,4 +1,5 @@
-#include "assembler.h"
+#include "Assembler.h"
+#include "Preassembler.h"
 
 /* Create a new macro table */
 MacroTable* create_macro_table(void) {
@@ -134,10 +135,10 @@ Boolean is_macro_name(MacroTable *table, const char *name) {
     return find_macro(table, name) != NULL;
 }
 
-/* Check if a string is a valid label name */
-Boolean is_valid_label_name(const char *name) {
+/* Check if a string is a valid macro length */
+Boolean is_valid_macro_len(const char *name) {
     int i;
-    
+
     if (!name || strlen(name) == 0 || strlen(name) > MAX_LABEL_LENGTH) {
         return FALSE;
     }
