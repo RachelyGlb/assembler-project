@@ -67,7 +67,7 @@ Boolean process_single_file(const char *filename) {
     }
     
     /* Process the file */
-    success = preprocess_file(input_filename, output_filename);
+    success = preassembler(filename);
     
     /* Cleanup */
     free(input_filename);

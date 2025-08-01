@@ -1,0 +1,40 @@
+# Makefile for Preassembler Only - Phase 1
+
+# Compiler and flags
+CC = gcc
+CFLAGS = -Wall -ansi -pedantic
+
+# Source files for preassembler only (library files only - no main)
+SOURCES = preassembler.c macro.c file_utils.c line_parser.c word_extractor.c
+OBJECTS = $(SOURCES:.c=.o)
+HEADERS = preassembler.h
+
+# Target - compile to object files only
+TARGET = preassembler_objects
+
+# Default target
+all: $(TARGET)
+
+# Build all object files
+$(TARGET): $(OBJECTS)
+	@echo "All preassembler object files compiled successfully:"
+	@ls -la $(OBJECTS)
+
+# Compile individual object files
+%.o: %.c $(HEADERS)
+	$(CC) $(CFLAGS) -c $< -o $@
+
+# Clean build files
+clean:
+	rm -f $(OBJECTS)
+
+# Clean all generated files (including test outputs)
+cleanall: clean
+	rm -f *.am
+
+# Test compilation - just verify all files compile without warnings
+test: $(TARGET)
+	@echo "All preassembler files compiled successfully with -Wall -ansi -pedantic"
+	@echo "Object files ready for linking in later phases"
+
+.PHONY: all clean cleanall test

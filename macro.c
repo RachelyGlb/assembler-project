@@ -1,5 +1,4 @@
-#include "Assembler.h"
-#include "Preassembler.h"
+#include "preassembler.h"
 
 /* Create a new macro table */
 MacroTable* create_macro_table(void) {
@@ -217,3 +216,4 @@ Boolean is_reserved_word(const char *word) {
     
     return FALSE;
 }
+
