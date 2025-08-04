@@ -150,7 +150,7 @@ Boolean preassembler(const char* filename) {
                 free(first_word);
                 continue;
             }
-            
+
             /* Prepare macro content for storage - FIXED ALLOCATION */
             macro_content = malloc(macro_line_count * sizeof(char*));  /* Fixed: removed ** */
             if (!macro_content) {
@@ -233,12 +233,6 @@ Boolean preassembler(const char* filename) {
         }
         
         free(first_word);
-    }
-    
-    /* Validation: ensure we didn't end inside an unclosed macro */
-    if (inside_macro) {
-        print_error(MACRO_ERROR, line_number, "Unclosed macro definition");
-        has_errors = TRUE;
     }
     
     /* Cleanup resources */

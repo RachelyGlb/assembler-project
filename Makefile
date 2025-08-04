@@ -5,9 +5,9 @@ CC = gcc
 CFLAGS = -Wall -ansi -pedantic
 
 # Source files
-SOURCES = assembler.c preprocessor.c macro.c utils.c
+SOURCES = assembler.c preassembler.c macro.c file_utils.c line_parser.c word_extractor.c
 OBJECTS = $(SOURCES:.c=.o)
-HEADERS = assembler.h
+HEADERS = Assembler.h preassembler.h
 
 # Target executable
 TARGET = assembler
