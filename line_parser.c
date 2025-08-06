@@ -121,7 +121,7 @@ Boolean is_line_too_long(const char *line, int line_number, FILE *input) {
     
     /* Count characters until \n or \0 */
     if (line[strlen(line) - 1] != '\n' && !feof(input)) {
-            print_error(LINE_TOO_LONG, line_number, "Line exceeds 80 characters");
+            print_error(LINE_TOO_LONG, line_number, NULL);
             return TRUE;
     }
     return FALSE;
