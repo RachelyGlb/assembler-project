@@ -53,7 +53,6 @@ Boolean preassembler(const char* filename) {
     if(!macro_table) {
         fclose(input);
         if(output) fclose(output);
-        free_macro_table(macro_table);
         REPORT_CRITICAL_ERROR_AND_EXIT(MEMORY_ALLOCATION_ERROR, 0, "Failed to create macro table", input_name, output_name);
     }
 
@@ -62,7 +61,7 @@ Boolean preassembler(const char* filename) {
     {
         fclose(input);
         fclose(output);
-        free_label_table(label_table);
+        free_macro_table(macro_table);  /* Free only the successfully allocated macro_table */
         REPORT_CRITICAL_ERROR_AND_EXIT(MEMORY_ALLOCATION_ERROR, 0, "Failed to create label table", input_name, output_name);
     }
 
@@ -330,20 +329,18 @@ Boolean preassembler(const char* filename) {
     }
     
     /* Cleanup resources */
-    free_macro_table(macro_table);
-    free_label_table(label_table);
-    fclose(input);
-    fclose(output);
-    free(input_name);
+    if(macro_table) free_macro_table(macro_table);
+    if(label_table) free_label_table(label_table);
+    if(input) fclose(input);
+    if(output) fclose(output);
+    if(input_name) free(input_name);
 
-    if (has_errors && file_exists(output_name))
+    if (has_errors && output_name && file_exists(output_name))
     {
         remove(output_name);
     }
-
-    else{
-        free(output_name);
-    }
+    
+    if(output_name) free(output_name);  /* Always free output_name regardless of errors */
     return !has_errors;
 } /* End of preassembler function */
 

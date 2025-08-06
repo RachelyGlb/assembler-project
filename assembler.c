@@ -1,4 +1,5 @@
 #include "assembler.h"
+#include "preassembler.h"
 
 int main(int argc, char *argv[]) {
     Boolean success = TRUE;
