@@ -1,28 +1,13 @@
 #ifndef PREASSEMBLER_H
 #define PREASSEMBLER_H
 
-#include <stdio.h>
-#include <stdlib.h>
+#include "assembler.h"
 #include <string.h>
+#include <stdlib.h>
+#include <stdio.h>
 #include <ctype.h>
 
 /* Constants */
-#define MAX_LINE_LENGTH 82
-#define MAX_LABEL_LENGTH 31
-#define MAX_FILENAME_LENGTH 256
-#define MAX_MACRO_LINES 50
-#define MEMORY_SIZE 256
-
-/* Boolean type for C90 compatibility */
-typedef enum
-{
-    FALSE = 0,
-    TRUE = 1
-} Boolean;
-
-/* File extensions */
-#define AS_EXTENSION ".as"
-#define AM_EXTENSION ".am"
 
 /* Macro keywords */
 #define MACRO_START "mcro"
@@ -55,24 +40,6 @@ typedef GenericTable MacroTable;
 typedef GenericTable LabelTable;
 typedef GenericNode MacroNode;
 typedef GenericNode LabelNode;
-
-/* Error types */
-typedef enum
-{
-    NO_ERROR = 0,
-    LINE_TOO_LONG,
-    INVALID_MACRO_NAME,
-    LABEL_ON_MACRO_LINE,
-    EXTRANEOUS_TEXT,
-    MEMORY_ALLOCATION_ERROR,
-    FILE_ERROR,
-    MACRO_NOT_CLOSED,
-    DUPLICATE_MACRO_NAME,
-    MACRO_ERROR,
-    INVALID_LABEL_NAME,
-    RESERVED_WORD,
-    DUPLICATE_LABEL_NAME
-} ErrorType;
 
 /* FUNCTION PROTOTYPES */
 
@@ -112,8 +79,9 @@ char *get_second_word(const char *line);
 Boolean has_extraneous_text_after_words(const char *line, int expected_words);
 
 /* File utilities */
-void cleanup_and_exit(MacroTable *table, FILE *input, FILE *output);
 Boolean file_exists(const char *filename);
+void cleanup_and_exit(MacroTable *table, FILE *input, FILE *output);
+void cleanup_macro_lines(char **lines, int count);
 char *create_filename_with_extension(const char *base_name, const char *extension);
 
 /* Line processing functions */
@@ -126,35 +94,55 @@ Boolean is_reserved_word(const char *word);
 /* Main preassembler function */
 Boolean preassembler(const char *filename);
 
-/* Error handling */
-void print_error(ErrorType error_type, int line_number, const char *message);
-
-
 /* Error handling macros */
 #define REPORT_CRITICAL_ERROR_AND_EXIT(error_type, line_num, msg, ptr1, ptr2) \
-    print_error(error_type, line_num, msg); \
-    if(ptr1) { free(ptr1); } \
-    if(ptr2) { free(ptr2); } \
+    print_error(error_type, line_num, msg);                                   \
+    if (ptr1)                                                                 \
+    {                                                                         \
+        free(ptr1);                                                           \
+    }                                                                         \
+    if (ptr2)                                                                 \
+    {                                                                         \
+        free(ptr2);                                                           \
+    }                                                                         \
     exit(1)
 
 #define REPORT_ERROR_AND_CONTINUE(error_type, line_num, msg, ptr1, ptr2) \
-    print_error(error_type, line_num, msg); \
-    has_errors = TRUE; \
-    if(ptr1) { free(ptr1); } \
-    if(ptr2) { free(ptr2); } \
+    print_error(error_type, line_num, msg);                              \
+    has_errors = TRUE;                                                   \
+    if (ptr1)                                                            \
+    {                                                                    \
+        free(ptr1);                                                      \
+    }                                                                    \
+    if (ptr2)                                                            \
+    {                                                                    \
+        free(ptr2);                                                      \
+    }                                                                    \
     continue
 
 #define REPORT_ERROR_AND_BREAK(error_type, line_num, msg, ptr1, ptr2) \
-    print_error(error_type, line_num, msg); \
-    has_errors = TRUE; \
-    if(ptr1) { free(ptr1); } \
-    if(ptr2) { free(ptr2); } \
+    print_error(error_type, line_num, msg);                           \
+    has_errors = TRUE;                                                \
+    if (ptr1)                                                         \
+    {                                                                 \
+        free(ptr1);                                                   \
+    }                                                                 \
+    if (ptr2)                                                         \
+    {                                                                 \
+        free(ptr2);                                                   \
+    }                                                                 \
     break
 
 #define REPORT_ERROR_ONLY(error_type, line_num, msg, ptr1, ptr2) \
-    print_error(error_type, line_num, msg); \
-    has_errors = TRUE; \
-    if(ptr1) { free(ptr1); } \
-    if(ptr2) { free(ptr2); }
+    print_error(error_type, line_num, msg);                      \
+    has_errors = TRUE;                                           \
+    if (ptr1)                                                    \
+    {                                                            \
+        free(ptr1);                                              \
+    }                                                            \
+    if (ptr2)                                                    \
+    {                                                            \
+        free(ptr2);                                              \
+    }
 
 #endif /* PREASSEMBLER_H */

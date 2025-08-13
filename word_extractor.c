@@ -1,4 +1,3 @@
-#include "assembler.h"
 #include "preassembler.h"
 
 /* String processing helper functions */
@@ -84,12 +83,15 @@ char* get_second_word(const char *line) {
 Boolean has_extraneous_text_after_words(const char *line, int expected_words) {
     char *temp_line;
     char *token;
-    int word_count = 0;
-    
-    if (!line) {
+    int word_count;
+
+    word_count = 0;
+
+        if (!line)
+    {
         return FALSE;
     }
-    
+
     temp_line = malloc(strlen(line) + 1);
     if (!temp_line) {
         return FALSE;

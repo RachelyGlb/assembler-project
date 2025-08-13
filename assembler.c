@@ -1,5 +1,7 @@
-#include "assembler.h"
 #include "preassembler.h"
+#include "first_pass.h"
+
+#include <stdlib.h>
 
 int main(int argc, char *argv[]) {
     Boolean success = TRUE;
@@ -48,13 +50,13 @@ Boolean process_single_file(const char *filename) {
     /* Create full input filename with .as extension */
     input_filename = create_filename_with_extension(filename, AS_EXTENSION);
     if (!input_filename) {
-        print_error(MEMORY_ALLOCATION_ERROR, 0, filename);
+        print_error(MEMORY_ALLOCATION_ERROR, 0, "allocating buffer for input filename");
         return FALSE;
     }
     
     /* Check if input file exists */
     if (!file_exists(input_filename)) {
-        print_error(FILE_ERROR, 0, input_filename);
+        print_error(FILE_ERROR, 0, "input file does not exist");
         free(input_filename);
         return FALSE;
     }
@@ -62,14 +64,25 @@ Boolean process_single_file(const char *filename) {
     /* Create output filename with .am extension */
     output_filename = create_filename_with_extension(filename, AM_EXTENSION);
     if (!output_filename) {
-        print_error(MEMORY_ALLOCATION_ERROR, 0, filename);
+        print_error(MEMORY_ALLOCATION_ERROR, 0, "allocating buffer for output filename");
         free(input_filename);
         return FALSE;
     }
     
     /* Process the file */
     success = preassembler(filename);
-    
+
+    if (!success)
+    {
+        printf("Pre-assembler phase failed for file: %s\n", filename);
+        free(input_filename);
+        free(output_filename);
+        return FALSE;
+    }
+
+    /* Process the .am file through first pass */
+    first_pass(output_filename);
+
     /* Cleanup */
     free(input_filename);
     free(output_filename);

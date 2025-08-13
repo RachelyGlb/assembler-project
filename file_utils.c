@@ -1,4 +1,3 @@
-#include "assembler.h"
 #include "preassembler.h"
 
 /* Check if a file exists */

@@ -326,21 +326,35 @@ char *extract_label_name(const char *line)
 }
 
 /* Get content after character */
+/* Get content after character */
 char *get_content_after_char(const char *line, char delimiter)
 {
     char *pos = strchr(line, delimiter);
     char *result;
+    char *trimmed_result;
 
     if (!pos)
         return NULL;
 
     pos++; /* Skip the delimiter */
+
+    /* Allocate new string for the result */
     result = malloc(strlen(pos) + 1);
     if (!result)
         return NULL;
 
     strcpy(result, pos);
-    return trim_whitespace(result);
+
+    /* Now trim in place - this is safe because we own the memory */
+    trimmed_result = trim_whitespace(result);
+
+    /* If trimming moved the pointer, we need to move the content */
+    if (trimmed_result != result)
+    {
+        memmove(result, trimmed_result, strlen(trimmed_result) + 1);
+    }
+
+    return result;
 }
 
 /* Get content after label */
@@ -352,7 +366,16 @@ char *get_content_after_label(const char *line)
 /* Simple label detection */
 Boolean has_label(const char *line)
 {
-    return strchr(line, ':') != NULL;
+    char *colon_pos = strchr(line, ':');
+    char *trimmed;
+
+    if (!colon_pos) return FALSE;
+
+    trimmed = trim_whitespace((char *)line);
+    if (trimmed == colon_pos)
+        return FALSE;
+
+    return TRUE;
 }
 
 /* Validate name (unified for both labels and macros) */
