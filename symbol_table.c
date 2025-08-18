@@ -1,7 +1,3 @@
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-#include <stdbool.h>
 #include "symbol_table.h"
 
 extern Symbol *symbol_table_head;
@@ -17,67 +13,66 @@ void add_symbol(const char *name, int address, SymbolType type) {
     new_symbol->name[30] = '\0';
     new_symbol->address = address;
     new_symbol->type = type;
-    new_symbol->is_entry = false;
+    new_symbol->is_entry = 0;
     new_symbol->next = symbol_table_head;
     symbol_table_head = new_symbol;
 }
 
-bool add_label_to_table(const char *label, int address, SymbolType type,
-                        int line_number, bool is_entry) {
+int add_symbol_to_table(const char *label, int address, SymbolType type,
+                        int line_number, int is_entry) {
+    int addr_to_set;
+    Symbol *exists;  
     if (!label || strlen(label) == 0) {
         fprintf(stderr, "Error: Empty label at line %d\n", line_number);
-        return false;
+        return 0;
     }
 
-    Symbol *exists = find_symbol(label);
+    exists = find_symbol(label);
     if (exists) {
-        /* .entry על תווית קיימת – סימון בלבד */
         if (is_entry) {
             if (exists->type == EXTERN_SYM) {
                 fprintf(stderr, "Error: .entry on extern label '%s' at line %d\n", label, line_number);
-                return false;
+                return 0;
             }
-            exists->is_entry = true;
-            return true;
+            exists->is_entry = 1;
+            return 1;
         }
 
-        /* עדכון placeholder שנוצר ע"י .entry */
+       
         if ((type == CODE || type == DATA) &&
             exists->type != EXTERN_SYM &&
             exists->address == 0) {
             exists->address = address;
             exists->type = type;
-            return true;
+            return 1;
         }
 
-        /* .extern על תווית קיימת */
         if (type == EXTERN_SYM) {
             if (exists->type != EXTERN_SYM) {
                 fprintf(stderr, "Error: Label '%s' already defined (not extern) at line %d\n",
                         label, line_number);
-                return false;
+                return 0;
             }
-            return true;
+            return 1;
         }
 
         fprintf(stderr, "Error: Duplicate label '%s' at line %d\n", label, line_number);
-        return false;
+        return 0;
     }
 
-    /* הוספה חדשה */
-    int addr_to_set = (type == EXTERN_SYM) ? 0 : address;
+    addr_to_set = (type == EXTERN_SYM) ? 0 : address;
     add_symbol(label, addr_to_set, type);
 
     if (is_entry) {
         if (type == EXTERN_SYM) {
             fprintf(stderr, "Error: .entry cannot be applied to extern label '%s' (line %d)\n",
                     label, line_number);
-            return false;
+            return 0;
         }
-        symbol_table_head->is_entry = true;
+        symbol_table_head->is_entry = 1;
     }
 
-    return true;
+    return 1;
 }
 
 Symbol *find_symbol(const char *name) {

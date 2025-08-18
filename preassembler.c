@@ -53,6 +53,7 @@ Boolean preassembler(const char *filename)
     char *first_word_after_label = NULL;
 
     int i, j, c, k;
+    int len;
 
     line_number = 0;
     macro_line_count = 0;
@@ -347,7 +348,25 @@ Boolean preassembler(const char *filename)
                 free(first_word);
                 continue;
             }
+
             strcpy(macro_lines[macro_line_count], line);
+            len = strlen(line);
+
+            if (len > 0 && line[len - 1] != '\n')
+            {
+                macro_lines[macro_line_count] = realloc(macro_lines[macro_line_count], len + 2);
+                if (!macro_lines[macro_line_count])
+                {
+                    print_error(MEMORY_ALLOCATION_ERROR, line_number, "Failed to expand macro line");
+                    cleanup_macro_lines(macro_lines, macro_line_count);
+                    macro_lines = NULL;
+                    has_errors = TRUE;
+                    free(first_word);
+                    continue;
+                }
+                strcat(macro_lines[macro_line_count], "\n");
+            }
+
             macro_line_count++;
             free(first_word);
             continue;
@@ -370,6 +389,11 @@ Boolean preassembler(const char *filename)
                     for (j = 0; j < macro_data->line_count; j++)
                     {
                         fputs(macro_data->content[j], output);
+                        len = strlen(macro_data->content[j]);
+                        if (len > 0 && macro_data->content[j][len - 1] != '\n')
+                        {
+                            fputc('\n', output);
+                        }
                     }
                 }
             }
@@ -378,6 +402,11 @@ Boolean preassembler(const char *filename)
         {
             /* Regular line - copy as-is to output */
             fputs(line, output);
+            len = strlen(line);
+            if (len > 0 && line[len - 1] != '\n')
+            {
+                fputc('\n', output);
+            }
         }
 
         if (first_word)

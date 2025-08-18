@@ -1,32 +1,35 @@
+
 #ifndef LINE_ANALYSIS_H
 #define LINE_ANALYSIS_H
 
-#include <stdbool.h>
-
-#include "symbol_table.h"
+#include "types.h"
 
 
-extern Symbol *symbol_table_head;  
+Boolean is_comment_or_empty(const char *line);
+Boolean is_label(const char *line);
+Boolean is_data_or_string(const char *line); 
+Boolean is_command(const char *line);
+Boolean is_register(const char *operand);
+Boolean is_immediate(const char *operand);
+Boolean is_matrix(const char *operand);
+Boolean is_label_operand(const char *operand);
 
 
-bool is_comment_or_empty(const char *line);
-bool is_label(const char *line);
-bool is_data_or_string(const char *line);
-bool is_command(const char *line);
-bool extract_label(const char *line, char *label);
-bool is_valid_label(const char *label);
-bool label_exists(const char *label);
+int extract_label(const char *line, char *label);
+Boolean is_valid_label(const char *label);
+Boolean label_exists(const char *label);
 int count_data_items(const char *line);
 int count_string_length(const char *line);
 int count_command_words(const char *line);
-bool is_register(const char *operand);
-bool is_immediate(const char *operand);
-int parse_operands(const char *line, char *operand1, char *operand2);
-bool is_matrix(const char *operand);
-bool is_label_operand(const char *operand);
 int count_matrix_items(const char *line);
-bool validate_command_line(const char *line, int line_number);
+int parse_operands(const char *line, char *operand1, char *operand2);
 
 
+int validate_command_line(const char *line, int line_number);
 
-#endif
+
+Boolean is_empty_line(const char *line);
+Boolean is_comment_line(const char *line);
+char *trim_whitespace(char *str);
+
+#endif /* LINE_ANALYSIS_H */

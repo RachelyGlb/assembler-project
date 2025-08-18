@@ -6,9 +6,9 @@
 #include "first_pass.h"
 #include "line_analysis.h"
 #include "symbol_table.h"
+#include "instruction_validation.h"
 
 
-/* הדפסת שגיאה נוחה */
 void error(int line_number, const char *format, ...)
 {
     va_list args;
@@ -28,9 +28,9 @@ void error(int line_number, const char *format, ...)
     va_end(args);
 }
 
-/* בסוף pass1 מוסיפים ICF לכתובות של סמלי DATA */
 static void adjust_data_addresses_with_icf(int icf) {
-    for (Symbol *s = symbol_table_head; s; s = s->next) {
+    Symbol *s;
+    for (s = symbol_table_head; s; s = s->next) {
         if (s->type == DATA) {
             s->address += icf;
         }
@@ -41,8 +41,9 @@ void first_pass(const char *filename) {
     char line[MAX_LINE_LENGTH];
     int line_number = 0;
     int IC = 100;   /* Instruction Counter */
-    int DC = 0;     /* Data Counter */
-    bool has_errors = false;
+    int DC = 0;  /* Data Counter */
+    int ICF = 0;     
+    int has_errors = 0;
 
     FILE *inputFile = fopen(filename, "r");
     if (!inputFile) {
@@ -56,6 +57,11 @@ void first_pass(const char *filename) {
 
     while (fgets(line, sizeof(line), inputFile)) {
         char label[MAX_LABEL_LENGTH] = "";
+        int has_label = 0;
+        const char *line_for_validation = NULL;
+        int words = 0;
+        Symbol *existing; 
+
         line_number++;
 
         if (is_comment_or_empty(line)) {
@@ -64,29 +70,31 @@ void first_pass(const char *filename) {
 
         printf("Line %d: %s", line_number, line);
 
-        /* תווית בתחילת השורה? */
-        bool has_label = extract_label(line, label);
+
+        has_label = extract_label(line, label);
         if (has_label) {
-            printf("  -> Label found: %s\n", label);
+            printf("  -> Label found!!!!: %s\n", label);
+            /*printf("[DBG] label='%s' first=%d '%c'\n",
+       label, (unsigned char)label[0], label[0]);*/
+
 
             if (!is_valid_label(label)) {
+                printf("  !!!!!");
                 error(line_number, "Invalid label name: %s", label);
-                has_errors = true;
+                has_errors = 1;
                 continue;
             }
 
-            /* כפילות "חכמה": אם יש placeholder מ-.entry (address==0) לא נזרוק שגיאה.
-               אם extern – אסור להגדיר מקומית; אם כבר עם כתובת – כפילות. */
-            Symbol *existing = find_symbol(label);
+            existing = find_symbol(label);
             if (existing) {
                 if (existing->type == EXTERN_SYM) {
                     error(line_number, "Label '%s' declared extern earlier", label);
-                    has_errors = true;
+                    has_errors = 1;
                     continue;
                 }
                 if (existing->address != 0) {
                     error(line_number, "Duplicate label: %s", label);
-                    has_errors = true;
+                    has_errors = 1;
                     continue;
                 }
             }
@@ -96,12 +104,12 @@ void first_pass(const char *filename) {
         if (strstr(line, ".entry")) {
             char entry_label[MAX_LABEL_LENGTH];
             if (sscanf(line, "%*s %30s", entry_label) == 1) {
-                if (!add_label_to_table(entry_label, 0, CODE, line_number, true)) {
-                    has_errors = true;
+                if (!add_symbol_to_table(entry_label, 0, CODE, line_number, 1)) {
+                    has_errors = 1;
                 }
             } else {
                 error(line_number, "Invalid .entry directive");
-                has_errors = true;
+                has_errors = 1;
             }
             continue;
         }
@@ -110,23 +118,23 @@ void first_pass(const char *filename) {
         if (strstr(line, ".extern")) {
             char extern_label[MAX_LABEL_LENGTH];
             if (sscanf(line, "%*s %30s", extern_label) == 1) {
-                if (!add_label_to_table(extern_label, 0, EXTERN_SYM, line_number, false)) {
-                    has_errors = true;
+                if (!add_symbol_to_table(extern_label, 0, EXTERN_SYM, line_number, 0)) {
+                    has_errors = 1;
                 }
             } else {
                 error(line_number, "Invalid .extern directive");
-                has_errors = true;
+                has_errors = 1;
             }
             continue;
         }
 
-        /* ===== הנחיות נתונים ===== */
+        /* ===== Data ===== */
         if (is_data_or_string(line)) {
             printf("  -> This line is a data or string directive.\n");
 
             if (has_label) {
-                if (!add_label_to_table(label, DC, DATA, line_number, false)) {
-                    has_errors = true;
+                if (!add_symbol_to_table(label, DC, DATA, line_number, 0)) {
+                    has_errors = 1;
                     continue;
                 }
             }
@@ -139,19 +147,18 @@ void first_pass(const char *filename) {
                 DC += count_matrix_items(line);
             }
         }
-        /* ===== פקודות קוד ===== */
+        /* ===== inst code ===== */
         else if (is_command(line)) {
             printf("  -> This line is a command.\n");
 
             if (has_label) {
-                if (!add_label_to_table(label, IC, CODE, line_number, false)) {
-                    has_errors = true;
+                if (!add_symbol_to_table(label, IC, CODE, line_number, 0)) {
+                    has_errors = 1;
                     continue;
                 }
             }
 
-            /* מצביע לתוכן אחרי התווית (אם יש) */
-            const char *line_for_validation = line;
+            line_for_validation = line;
             if (has_label) {
                 const char *colon = strchr(line, ':');
                 if (colon) {
@@ -161,22 +168,24 @@ void first_pass(const char *filename) {
                 }
             }
 
-            /* נספור תמיד את המילים ונעדכן IC גם אם הוולידציה נכשלת */
-            int words = count_command_words(has_label ? line_for_validation : line);
+           
+            words = count_command_words(has_label ? line_for_validation : line);
 
             if (!validate_command_line(line_for_validation, line_number)) {
-                has_errors = true;
-                IC += words;      /* נשמור עקביות כתובות */
+                has_errors = 1;
+                IC += words;     
                 continue;
             }
 
-            IC += words;          /* תקין – מקדמים רגיל */
+            IC += words;         
+        }else {
+            has_errors= 1;
         }
+
         
     }
 
-    /* ==== סוף המעבר הראשון: עדכון סמלי DATA עם ICF ==== */
-    const int ICF = IC; /* Instruction Counter Final */
+    ICF = IC; /* Instruction Counter Final */
     adjust_data_addresses_with_icf(ICF);
 
     printf("First pass completed.\n");

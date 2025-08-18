@@ -1,27 +1,76 @@
-#include <stddef.h>
-
+/* instruction_table.c - instruction table */
 #include "instruction_table.h"
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
 
-/* מספר האופרנדים לכל פקודה לפי המפרט */
-InstructionDef instruction_table[] = {
-    {"mov",  GROUP_ONE,   2},
-    {"cmp",  GROUP_ONE,   2},
-    {"add",  GROUP_ONE,   2},
-    {"sub",  GROUP_ONE,   2},
-    {"lea",  GROUP_ONE,   2},
+/* static instruction table */
+static InstructionDef instructions[] = {
+    {"mov", 0, 2},
+    {"cmp", 1, 2},
+    {"add", 2, 2},
+    {"sub", 3, 2},
+    {"not", 4, 1},
+    {"clr", 5, 1},
+    {"lea", 6, 2},
+    {"inc", 7, 1},
+    {"dec", 8, 1},
+    {"jmp", 9, 1},
+    {"bne", 10, 1},
+    {"red", 11, 1},
+    {"prn", 12, 1},
+    {"jsr", 13, 1},
+    {"rts", 14, 0},
+    {"stop", 15, 0}};
 
-    {"clr",  GROUP_TWO,   1},
-    {"not",  GROUP_TWO,   1},
-    {"inc",  GROUP_TWO,   1},
-    {"dec",  GROUP_TWO,   1},
-    {"jmp",  GROUP_TWO,   1},
-    {"bne",  GROUP_TWO,   1},
-    {"jsr",  GROUP_TWO,   1},
-    {"red",  GROUP_TWO,   1},
-    {"prn",  GROUP_TWO,   1},
+#define INSTRUCTION_COUNT 16
 
-    {"rts",  GROUP_THREE, 0},
-    {"stop", GROUP_THREE, 0},
+/* find instruction by name */
+InstructionDef *find_instruction(const char *name)
+{
+    int i;
 
-    {NULL,   0,           0}
-};
+    if (!name)
+        return NULL;
+
+    for (i = 0; i < INSTRUCTION_COUNT; i++)
+    {
+        if (strcmp(instructions[i].name, name) == 0)
+        {
+            return &instructions[i];
+        }
+    }
+
+    return NULL;
+}
+
+/* check if instruction is valid */
+Boolean is_valid_instruction(const char *name)
+{
+    return (find_instruction(name) != NULL);
+}
+
+/* get operand count for an instruction */
+int get_instruction_operand_count(const char *name)
+{
+    InstructionDef *instr = find_instruction(name);
+
+    if (instr)
+    {
+        return instr->operands_count;
+    }
+
+    return -1; /* instruction not found */
+}
+
+/* initialize instruction table */
+void init_instruction_table(void)
+{
+    /* table is static, no initialization required */
+}
+
+/* free instruction table memory */
+void free_instruction_table(void)
+{
+    /* table is static, no free required */
+}

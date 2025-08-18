@@ -1,38 +1,102 @@
 # 🔧 קבצי קומפילציה
 *.o
+*.obj
 *.out
 *.exe
 *.log
-*d
+*.d
 *~
 
 # ⚙️ קבצי הרצה
 assembler
+assembler.exe
 
-# 🧪 קבצי בדיקות ופלטים אוטומטיים
+# 📄 קבצי פלט של האסמבלר
 *.am
-*.as
-*.expected
+*.ext
+*.ent
+*.obj
 
-# 🏗 תיקיות ביניים
+# 🧪 קבצי בדיקות (אבל שומר על דוגמאות חשובות)
+*.expected
+test_output*
+temp_*
+
+# 🏗️ תיקיות ביניים
 build/
+bin/
+obj/
+debug/
+release/
 
 # 📝 קבצי גיבוי זמניים
 *.bak
 *.tmp
 *.swp
+*.swo
+*.backup
+*~
 
-# 🧠 VSCode
+# 🧠 IDE ועורכים
 .vscode/
+.idea/
+*.code-workspace
+*.sublime-*
 
-# 💻 קבצי מערכת
+# 💻 קבצי מערכת הפעלה
 .DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
 Thumbs.db
+desktop.ini
 
-# 🚫 מחוץ לתיקייה — להיזהר עם זה!
-# (אם זה יוצר לך בעיות, עדיף למחוק)
-../../*
-../*
+# 🔒 הגנה מפני קבצים מחוץ לתיקיית הפרויקט
+# (זה מונע הוספה בטעות של קבצים מתיקיות אב)
+../
+../../
+../../../
+/*/*
 
-# 📁 קבצים זמניים שאינם שייכים למערכת ניהול גרסאות
-Makefile_preassembler
+# 🚫 קבצי Makefile זמניים
+Makefile_*
+makefile_*
+*.mk.tmp
+
+# 📊 קבצי debugging ו-profiling
+*.gch
+*.pch
+core
+core.*
+vgcore.*
+*.dSYM/
+*.su
+
+# 🔍 קבצי לוגים ודיבוג
+*.log
+*.trace
+debug.txt
+output.txt
+
+# ⚡ קבצי תיקוח זמניים של Git
+*.orig
+*.rej
+
+# 🎯 קבצים ספציפיים לפרויקט שלא צריכים להיות ב-Git
+test_files_temp/
+output_temp/
+scratch/
+
+# 📦 ארכיבים (למקרה שנוצרים באופן אוטומטי)
+*.zip
+*.tar
+*.tar.gz
+*.rar
+
+# 🔐 קבצי הגדרות פרטיים (אם יהיו)
+config.local
+.env
+*.key
+*.pem
