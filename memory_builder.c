@@ -1,4 +1,12 @@
-/* memory_builder.c - building the memory image */
+/**
+ * @file memory_builder.c  
+ * @brief Memory image construction and management
+ * 
+ * This module handles the construction and management of the memory image
+ * used during assembly. It provides functions to initialize memory,
+ * add instructions and data, and manage the memory layout.
+ */
+
 #include "memory_builder.h"
 #include "line_analysis.h"
 #include "instruction_table.h"
@@ -8,6 +16,13 @@
 #include <string.h>
 #include <ctype.h>
 
+/**
+ * @brief Initialize memory image structure
+ * @param memory Pointer to memory image to initialize
+ * 
+ * Clears all memory arrays and resets counters to prepare
+ * for a new assembly process.
+ */
 /* initialize memory image */
 void init_memory_image(MemoryImage *memory)
 {
@@ -17,7 +32,7 @@ void init_memory_image(MemoryImage *memory)
 
     for (i = 0; i < MEMORY_SIZE; i++)
     {
-        memory->instruction_memory[i] = 0;
+        memory->instruction_image[i].bits = 0;
         memory->data_memory[i] = 0;
         memory->data_image[i].bits = 0;
     }
@@ -28,6 +43,13 @@ void init_memory_image(MemoryImage *memory)
     memory->DCF = 0;
 }
 
+/**
+ * @brief Add a data word to the memory image
+ * @param memory Pointer to memory image
+ * @param address Address where data should be stored
+ * @param word Machine word containing the data
+ * @return TRUE on success, FALSE on overflow or error
+ */
 Boolean add_data_word(MemoryImage *memory, int address, MachineWord word)
 {
     int idx;
@@ -43,6 +65,13 @@ Boolean add_data_word(MemoryImage *memory, int address, MachineWord word)
     return TRUE;
 }
 
+/**
+ * @brief Add an instruction word to the memory image
+ * @param memory Pointer to memory image
+ * @param address Address where instruction should be stored
+ * @param word Machine word containing the instruction
+ * @return TRUE on success, FALSE on overflow or error
+ */
 Boolean add_instruction_word(MemoryImage *memory, int address, MachineWord word)
 {
     int idx;
@@ -54,7 +83,7 @@ Boolean add_instruction_word(MemoryImage *memory, int address, MachineWord word)
         return FALSE;
     }
     idx = memory->instruction_count++;
-    memory->instruction_memory[idx] = word.bits;
+    memory->instruction_image[idx] = word;
     return TRUE;
 }
 
@@ -71,8 +100,9 @@ Boolean update_instruction_word(MemoryImage *memory, int address, MachineWord wo
                BASE_ADDRESS,
                BASE_ADDRESS + memory->instruction_count - 1);
         return FALSE;
+
     }
-    memory->instruction_memory[idx] = (word.bits & 0x3FF);
+    memory->instruction_image[idx] = word;
     return TRUE;
 }
 
@@ -141,8 +171,8 @@ Boolean build_memory_image(const char *am_filename, MemoryImage *memory)
         }
     }
 
-    memory->ICF = BASE_ADDRESS + memory->instruction_count;
-    memory->DCF = memory->data_count;
+    memory->ICF = current_ic;
+    memory->DCF = current_dc;
 
     fclose(file);
 
@@ -207,21 +237,33 @@ void encode_data_directive(const char *line, MemoryImage *memory, int *current_d
 /* processing the .string directive */
 void encode_string_directive(const char *line, MemoryImage *memory, int *current_dc, int line_number)
 {
-    char *start, *end;
+    const char *start, *end;
     int i;
     MachineWord char_word;
 
-    /* find string content between quotes */
-    start = strchr(line, '"');
+    /* חפש .string */
+    start = strstr(line, ".string");
     if (!start)
         return;
-    start++; /* skip opening quote */
 
-    end = strrchr(line, '"');
-    if (!end || end <= start)
+    /* התקדם אחרי .string */
+    start += strlen(".string");
+    while (*start && (*start == ' ' || *start == '\t'))
+        start++;
+    
+    /* דלג על תווי Unicode עד ASCII */
+    while (*start && ((unsigned char)*start > 127 || *start < 32))
+        start++;
+    
+    if (!*start)
         return;
 
-    /* encode each character */
+    /* מצא סוף המחרוזת ASCII */
+    end = start;
+    while (*end && (unsigned char)*end >= 32 && (unsigned char)*end <= 126)
+        end++;
+
+    /* קודד כל תו */
     for (i = 0; start + i < end && memory->data_count < MEMORY_SIZE; i++)
     {
         char_word.bits = (unsigned char)start[i];
@@ -229,7 +271,7 @@ void encode_string_directive(const char *line, MemoryImage *memory, int *current
         (*current_dc)++;
     }
 
-    /* append string terminator */
+    /* הוסף null terminator */
     if (memory->data_count < MEMORY_SIZE)
     {
         char_word.bits = 0;
@@ -242,48 +284,55 @@ void encode_string_directive(const char *line, MemoryImage *memory, int *current
 void encode_matrix_directive(const char *line, MemoryImage *memory, int *current_dc, int line_number)
 {
     char line_copy[MAX_LINE_LENGTH];
+    char *values_start;
     char *token;
     int value;
     MachineWord data_word;
+    int count = 0; /* Debug counter */
+
 
     strcpy(line_copy, line);
 
-    /* skip label if present */
-    token = strtok(line_copy, " \t");
-    if (token && strchr(token, ':'))
-    {
-        token = strtok(NULL, " \t");
+    values_start = strstr(line_copy, "]");
+    if (!values_start) {
+        return;
+    }
+    
+    values_start = strchr(values_start + 1, ']');
+    if (!values_start) {
+        return;
+    }
+        
+    values_start++;
+    while (*values_start && isspace(*values_start))
+        values_start++;
+    
+    if (!*values_start) {
+        return;
     }
 
-    /* skip the ".mat" token and dimensions */
-    token = strtok(NULL, " \t");
-    while (token && strchr(token, '['))
-    {
-        token = strtok(NULL, " \t");
-    }
 
-    /* process comma-separated values */
-    if (token)
+    token = strtok(values_start, ",");
+    while (token && memory->data_count < MEMORY_SIZE)
     {
-        token = strtok(token, ",");
-        while (token && memory->data_count < MEMORY_SIZE)
+        while (isspace(*token))
+            token++;
+            
+        value = atoi(token);
+
+        if (value < 0)
         {
-            while (isspace(*token))
-                token++;
-            value = atoi(token);
-
-            if (value < 0)
-            {
-                value = (1 << 10) + value;
-            }
-
-            data_word.bits = value & 0x3FF;
-            add_data_word(memory, BASE_ADDRESS + memory->instruction_count + *current_dc, data_word);
-            (*current_dc)++;
-
-            token = strtok(NULL, ",");
+            value = (1 << 10) + value;
         }
+
+        data_word.bits = value & 0x3FF;
+        add_data_word(memory, BASE_ADDRESS + memory->instruction_count + *current_dc, data_word);
+        (*current_dc)++;
+        count++;
+
+        token = strtok(NULL, ",");
     }
+    
 }
 
 /* encode instruction for the first pass */
@@ -291,18 +340,19 @@ void encode_matrix_directive(const char *line, MemoryImage *memory, int *current
 void encode_instruction_first_pass(const char *line, MemoryImage *memory, int *current_ic, int line_number)
 {
     char line_copy[MAX_LINE_LENGTH];
-    char *token;
+    char *token,*end;
     char *instruction_name;
     char operand1[MAX_LINE_LENGTH] = "";
     char operand2[MAX_LINE_LENGTH] = "";
-    char *end;
+    
     int operand_count = 0;
     InstructionDef *instr;
     int opcode;
     int src_method = 0, dest_method = 0;
     MachineWord first_word, w;
-
-    (void)line_number; /* unused here; keep for interface compatibility */
+    int src_reg, dest_reg,reg;
+    int row_reg, col_reg;
+        (void) line_number; /* unused here; keep for interface compatibility */
 
     strcpy(line_copy, line);
 
@@ -316,7 +366,6 @@ void encode_instruction_first_pass(const char *line, MemoryImage *memory, int *c
     instruction_name = token;
     if (!instruction_name)
         return;
-
     /* locate instruction */
     instr = find_instruction(instruction_name);
     if (!instr)
@@ -373,8 +422,8 @@ void encode_instruction_first_pass(const char *line, MemoryImage *memory, int *c
     /* special case: two registers share one word */
     if (operand_count == 2 && is_register(operand1) && is_register(operand2))
     {
-        int src_reg = atoi(operand1 + 1); /* 'rX' -> X */
-        int dest_reg = atoi(operand2 + 1);
+        src_reg = atoi(operand1 + 1); /* 'rX' -> X */
+        dest_reg = atoi(operand2 + 1);
         w = encode_register_operand(src_reg, dest_reg);
         add_instruction_word(memory, *current_ic, w);
         (*current_ic)++;
@@ -394,18 +443,36 @@ void encode_instruction_first_pass(const char *line, MemoryImage *memory, int *c
         else if (is_register(operand1))
         {
             /* single register (source-only field) */
-            int reg = atoi(operand1 + 1);
+            reg = atoi(operand1 + 1);
             w = encode_register_operand(reg, 0);
             add_instruction_word(memory, *current_ic, w);
             (*current_ic)++;
         }
-        else
-        {
-            /* direct/matrix symbol -> placeholder to be patched in second pass */
-            w.bits = 0;
-            add_instruction_word(memory, *current_ic, w);
-            (*current_ic)++;
-        }
+       else if (is_matrix(operand1))
+{
+    /* matrix operand needs 2 words */
+    /* First word: base address (placeholder for second pass) */
+    w.bits = 0; 
+    add_instruction_word(memory, *current_ic, w);
+    (*current_ic)++;
+    
+    /* Second word: encode the register indices like r2,r7 -> 0010-0111-00 */
+    /* Second word: encode the register indices */
+{
+    
+    extract_matrix_registers(operand1, &row_reg, &col_reg);
+    w.bits = ((row_reg & 0xF) << 6) | ((col_reg & 0xF) << 2);
+} /* temporary encoding for r2,r7 - should extract from operand1 */
+    add_instruction_word(memory, *current_ic, w);
+    (*current_ic)++;
+}
+else
+{
+    /* direct symbol -> placeholder to be patched in second pass */
+    w.bits = 0;
+    add_instruction_word(memory, *current_ic, w);
+    (*current_ic)++;
+}
     }
 
     /* destination operand (if exists) */
@@ -419,13 +486,25 @@ void encode_instruction_first_pass(const char *line, MemoryImage *memory, int *c
             (*current_ic)++;
         }
         else if (is_register(operand2))
-        {
-            /* single register (dest-only field) */
-            int reg = atoi(operand2 + 1);
-            w = encode_register_operand(0, reg);
-            add_instruction_word(memory, *current_ic, w);
-            (*current_ic)++;
-        }
+    {
+        /* single register (source-only field) */
+        reg = atoi(operand2 + 1);
+        w = encode_register_operand(reg, 0);
+        add_instruction_word(memory, *current_ic, w);
+        (*current_ic)++;
+    }
+    else if (is_matrix(operand2))
+    {
+        /* matrix operand needs 2 words */
+        w.bits = 0; 
+        add_instruction_word(memory, *current_ic, w);
+        (*current_ic)++;
+        /* second word for matrix - placeholder */
+        w.bits = 0;
+        add_instruction_word(memory, *current_ic, w);
+        (*current_ic)++;
+    }
+   
         else
         {
             /* direct/matrix symbol -> placeholder to be patched in second pass */
@@ -447,11 +526,11 @@ int get_opcode_value(const char *instruction_name)
         return 2;
     if (strcmp(instruction_name, "sub") == 0)
         return 3;
-    if (strcmp(instruction_name, "not") == 0)
+    if (strcmp(instruction_name, "lea") == 0)
         return 4;
     if (strcmp(instruction_name, "clr") == 0)
         return 5;
-    if (strcmp(instruction_name, "lea") == 0)
+    if (strcmp(instruction_name, "not") == 0)
         return 6;
     if (strcmp(instruction_name, "inc") == 0)
         return 7;
@@ -461,11 +540,11 @@ int get_opcode_value(const char *instruction_name)
         return 9;
     if (strcmp(instruction_name, "bne") == 0)
         return 10;
-    if (strcmp(instruction_name, "red") == 0)
-        return 11;
-    if (strcmp(instruction_name, "prn") == 0)
-        return 12;
     if (strcmp(instruction_name, "jsr") == 0)
+        return 11;
+    if (strcmp(instruction_name, "red") == 0)
+        return 12;
+    if (strcmp(instruction_name, "prn") == 0)
         return 13;
     if (strcmp(instruction_name, "rts") == 0)
         return 14;
@@ -490,21 +569,19 @@ int get_addressing_method(const char *operand)
         return REGISTER_ADDR; /* 3 - register */
     }
 
-    if (operand[0] == '[' && operand[strlen(operand) - 1] == ']')
+    if (strchr(operand, '[') && strchr(operand, ']'))  
     {
         return MATRIX_ADDR; /* 2 - matrix */
     }
 
     return DIRECT_ADDR; /* 1 - direct */
 }
-
 /* encode first word */
 MachineWord encode_first_word(int opcode, int src_method, int dest_method)
 {
     MachineWord word;
     word.bits = 0;
-
-    /* bits 6-9: opcode */
+     /* bits 6-9: opcode */
     word.bits |= (opcode & 0xF) << 6;
 
     /* bits 4-5: source addressing method */
@@ -555,4 +632,39 @@ void free_memory_image(MemoryImage *memory)
     memory->data_count = 0;
     memory->ICF = BASE_ADDRESS;
     memory->DCF = 0;
+}
+void extract_matrix_registers(const char *matrix_operand, int *row_reg, int *col_reg)
+{
+    char temp[MAX_LINE_LENGTH];
+    char *start, *middle, *end;
+    
+    strcpy(temp, matrix_operand);
+    *row_reg = 0;
+    *col_reg = 0;
+    
+    /* חפש [r2][r7] */
+    start = strchr(temp, '[');
+    if (!start) return;
+    start++; /* דלג על [ */
+    
+    middle = strchr(start, ']');
+    if (!middle) return;
+    *middle = '\0';
+    
+    /* חלץ רגיסטר ראשון */
+    if (start[0] == 'r' && isdigit(start[1]))
+        *row_reg = atoi(start + 1);
+    
+    /* חפש רגיסטר שני */
+    start = middle + 1;
+    start = strchr(start, '[');
+    if (!start) return;
+    start++;
+    
+    end = strchr(start, ']');
+    if (!end) return;
+    *end = '\0';
+    
+    if (start[0] == 'r' && isdigit(start[1]))
+        *col_reg = atoi(start + 1);
 }

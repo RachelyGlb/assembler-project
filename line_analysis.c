@@ -5,7 +5,7 @@
 #include <string.h>
 #include <ctype.h>
 
-Symbol *symbol_table_head = NULL;
+
 
 int extract_label(const char *line, char *label)
 {
@@ -88,7 +88,7 @@ Boolean is_command(const char *line)
     char op[16] = {0};
     const char *q;
     int i;
-    const char *colon;
+    const char *colon;  
     static const char *ops[] = {
         "mov", "cmp", "add", "sub", "lea",
         "clr", "not", "inc", "dec",
@@ -240,21 +240,42 @@ Boolean is_label_operand(const char *operand)
 
 int count_string_length(const char *line)
 {
-    const char *p = strchr(line, '"');
+    const char *start = NULL;
+    const char *end = NULL;
     int count = 0;
+    const char *p;
 
-    if (!p)
+    /* חפש .string */
+    p = strstr(line, ".string");
+    if (!p) {
         return 0;
-    p++;
-    while (*p && *p != '"')
-    {
-        count++;
-        p++;
     }
 
-    return count + 1;
+    /* התקדם אחרי .string */
+    p += strlen(".string");
+    while (*p && (*p == ' ' || *p == '\t'))
+        p++;
+    
+    /* דלג על כל תו שאינו ASCII רגיל עד שתמצא תו ASCII */
+    while (*p && ((unsigned char)*p > 127 || *p < 32))
+        p++;
+    
+    if (!*p) {
+        return 0;
+    }
+    
+    start = p; /* התחל מכאן */
+    
+    /* חפש סוף המחרוזת - כל תו לא-ASCII או תו בקרה */
+    end = start;
+    while (*end && (unsigned char)*end >= 32 && (unsigned char)*end <= 126)
+        end++;
+    
+    count = end - start;
+    printf("DEBUG count_string_length: found %d ASCII chars\n", count);
+    
+    return count + 1; /* +1 for null terminator */
 }
-
 int count_command_words(const char *line)
 {
     char command[MAX_LINE_LENGTH] = {0};
@@ -277,11 +298,7 @@ int count_command_words(const char *line)
 
     if (num_operands == 1)
     {
-        if (is_register(operand1) || is_immediate(operand1) || is_label_operand(operand1))
-        {
-            words += 1;
-        }
-        else if (is_matrix(operand1))
+        if (is_matrix(operand1))
         {
             words += 2;
         }
@@ -301,22 +318,23 @@ int count_command_words(const char *line)
         }
         else
         {
-            if (is_register(operand1) || is_immediate(operand1) || is_label_operand(operand1))
-            {
-                words += 1;
-            }
-            else if (is_matrix(operand1))
+            
+            if (is_matrix(operand1))
             {
                 words += 2;
+            }
+            else
+            {
+                words += 1;
             }
 
-            if (is_register(operand2) || is_immediate(operand2) || is_label_operand(operand2))
-            {
-                words += 1;
-            }
-            else if (is_matrix(operand2))
+            if (is_matrix(operand2))
             {
                 words += 2;
+            }
+            else
+            {
+                words += 1; 
             }
         }
     }

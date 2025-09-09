@@ -40,7 +40,6 @@ Boolean generate_output_files(const char *filename, MemoryImage *memory,
 }
 
 /* Write .ob (object) file */
-/* Write .ob (object) file */
 Boolean write_object_file(const char *filename, MemoryImage *memory)
 {
     FILE *file;
@@ -49,7 +48,7 @@ Boolean write_object_file(const char *filename, MemoryImage *memory)
     char *ic_base4, *dc_base4, *ic_trimmed, *dc_trimmed;
     char *address_base4, *word_base4;
     int i;
-
+    int calculated_address;
     /* Create output filename */
     base_name = get_base_filename(filename);
     if (!base_name)
@@ -74,8 +73,13 @@ Boolean write_object_file(const char *filename, MemoryImage *memory)
     }
 
     /* Header: IC and DC in base-4 (trim leading 'a's) */
-    ic_base4 = decimal_to_base4(memory->instruction_count, 1);
-    dc_base4 = decimal_to_base4(memory->data_count, 1);
+
+    ic_base4 = decimal_to_base4(memory->instruction_count, 5);
+    dc_base4 = decimal_to_base4(memory->data_count, 5);
+
+    
+
+
     if (!ic_base4 || !dc_base4)
     {
         printf("Error: Failed to convert header to base 4\n");
@@ -91,18 +95,21 @@ Boolean write_object_file(const char *filename, MemoryImage *memory)
 
     ic_trimmed = ic_base4;
     dc_trimmed = dc_base4;
-    while (*ic_trimmed == 'a' && *(ic_trimmed + 1) != '\0')
+    while (*ic_trimmed == 'a' && strlen(ic_trimmed) > 1)
         ic_trimmed++;
-    while (*dc_trimmed == 'a' && *(dc_trimmed + 1) != '\0')
+    while (*dc_trimmed == 'a' && strlen(dc_trimmed) > 1)
         dc_trimmed++;
 
     fprintf(file, "%s %s\n", ic_trimmed, dc_trimmed);
-
     /* Write instruction image: addr(4), word(5) */
     for (i = 0; i < memory->instruction_count; i++)
     {
+        printf("Instruction[%d] at addr %d: decimal=%d, binary=", 
+           i, BASE_ADDRESS + i, memory->instruction_image[i].bits);
         address_base4 = decimal_to_base4(BASE_ADDRESS + i, 4);
-        word_base4 = decimal_to_base4(memory->instruction_memory[i] & 0x3FF, 5);
+        
+        word_base4 = decimal_to_base4(memory->instruction_image[i].bits & 0x3FF, 5);
+         
         if (!address_base4 || !word_base4)
         {
             printf("Error: Failed to convert instruction to base 4\n");
@@ -120,12 +127,17 @@ Boolean write_object_file(const char *filename, MemoryImage *memory)
         fprintf(file, "%s %s\n", address_base4, word_base4);
         free(address_base4);
         free(word_base4);
-    }
+        }
+    
 
-    /* Write data image: continue addresses after code */
+    
     for (i = 0; i < memory->data_count; i++)
     {
-        address_base4 = decimal_to_base4(BASE_ADDRESS + memory->instruction_count + i, 4);
+        calculated_address = BASE_ADDRESS + memory->instruction_count + i;
+        printf("Data[%d] at addr %d: decimal=%d\n", i, BASE_ADDRESS + memory->instruction_count + i, memory->data_image[i].bits);
+         
+    
+        address_base4 = decimal_to_base4(calculated_address, 4);
         word_base4 = decimal_to_base4(memory->data_image[i].bits & 0x3FF, 5);
         if (!address_base4 || !word_base4)
         {

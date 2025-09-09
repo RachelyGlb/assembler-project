@@ -1,13 +1,30 @@
+/**
+ * @file assembler.c
+ * @brief Main assembler program - coordinates all assembly phases
+ * 
+ * This is the main entry point for the two-pass assembler. It processes
+ * assembly source files through multiple phases:
+ * 1. Pre-assembler (macro expansion)
+ * 2. First pass (symbol table building)
+ * 3. Memory image building
+ * 4. Second pass (code generation)
+ * 5. Output file generation
+ */
+
 #include "preassembler.h"
 #include "first_pass.h"
 #include "second_pass.h"
 #include "memory_builder.h"
 #include "output_writer.h"
- #include "assembler.h"
- #include "types.h"
+#include "assembler.h"
+#include "types.h"
 
-
-
+/**
+ * @brief Main function - entry point of the assembler
+ * @param argc Number of command line arguments
+ * @param argv Array of command line arguments
+ * @return 0 on success, 1 on error
+ */
 int main(int argc, char *argv[])
 {
     Boolean success = TRUE;
@@ -33,6 +50,12 @@ int main(int argc, char *argv[])
     return 0;
 }
 
+/**
+ * @brief Process multiple input files sequentially
+ * @param argc Number of command line arguments
+ * @param argv Array of command line arguments
+ * @return TRUE if all files processed successfully, FALSE otherwise
+ */
 /* Process all files provided in command line arguments */
 Boolean process_files(int argc, char *argv[])
 {
@@ -53,6 +76,18 @@ Boolean process_files(int argc, char *argv[])
     return overall_success;
 }
 
+/**
+ * @brief Process a single assembly source file through all phases
+ * @param filename Base filename (without extension)
+ * @return TRUE if file processed successfully, FALSE otherwise
+ * 
+ * This function coordinates all assembly phases for a single file:
+ * 1. Pre-assembler phase (macro expansion)
+ * 2. First pass (syntax check and symbol table building)
+ * 3. Memory image building
+ * 4. Second pass (code generation and address resolution)
+ * 5. Output file generation
+ */
 /* Process a single input file through all phases */
 Boolean process_single_file(const char *filename)
 {
