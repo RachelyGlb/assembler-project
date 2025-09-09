@@ -1,9 +1,32 @@
+/**
+ * @file second_pass.c
+ * @brief Second pass of the assembler - code generation and address resolution
+ * 
+ * This module implements the second pass of the two-pass assembler.
+ * It generates the final machine code, resolves symbol addresses,
+ * and creates the necessary output files.
+ */
+
 #include "second_pass.h"
 #include "line_analysis.h"
 #include "instruction_table.h"
 #include "output_writer.h"
 #include "memory_builder.h"
 
+/**
+ * @brief Main second pass function - generates machine code and resolves addresses
+ * @param filename Name of the .am file to process
+ * @param memory Pointer to the memory image structure
+ * @return TRUE if second pass completed successfully, FALSE on error
+ * 
+ * The second pass performs the following operations:
+ * 1. Reads the preprocessed .am file line by line
+ * 2. Processes .entry directives for symbol exports
+ * 3. Generates machine code for instructions
+ * 4. Resolves symbol addresses and external references
+ * 5. Updates the memory image with final code
+ * 6. Prepares data for output file generation
+ */
 /* Main second pass function */
 Boolean second_pass(const char *filename, MemoryImage *memory)
 {
@@ -58,10 +81,15 @@ Boolean second_pass(const char *filename, MemoryImage *memory)
         }
 
         /* Process instruction lines */
-        if (is_command(line))
-        {
-            process_instruction_second_pass(line, &ctx, line_number);
-        }
+        /* Process instruction lines */
+if (is_command(line))
+{
+    process_instruction_second_pass(line, &ctx, line_number);
+}
+else
+{
+    printf("SECOND_PASS DEBUG: Skipping non-instruction line: '%s'\n", line);
+}
     }
 
     fclose(file);
@@ -97,9 +125,10 @@ void process_instruction_second_pass(const char *line, SecondPassContext *ctx, i
     InstructionDef *instr;
     MachineWord word;
     int are_bits;
-    int src_uses_word;
     int addr1, addr2;
-
+    int operand1_words = 0;
+    int instruction_length;
+    
     strcpy(line_copy, line);
 
     /* Skip label if exists */
@@ -117,10 +146,6 @@ void process_instruction_second_pass(const char *line, SecondPassContext *ctx, i
         return;
     }
 
-    src_uses_word = (operand_count >= 1) && (operand1[0] == '#' || !is_register(operand1));
-    addr1 = ctx->current_ic + 1;
-    addr2 = ctx->current_ic + (src_uses_word ? 2 : 1);
-
     /* Find instruction in table */
     instr = find_instruction(instruction_name);
     if (!instr)
@@ -130,7 +155,7 @@ void process_instruction_second_pass(const char *line, SecondPassContext *ctx, i
         return;
     }
 
-    /* Parse operands */
+    /* Parse operands FIRST */
     token = strtok(NULL, ",");
     if (token)
     {
@@ -159,37 +184,55 @@ void process_instruction_second_pass(const char *line, SecondPassContext *ctx, i
         }
     }
 
+    
+    /* NOW calculate addresses AFTER parsing - handle matrix properly */
+if (operand_count >= 1)
+{
+    if (operand1[0] == '#')
+        operand1_words = 1;          /* immediate */
+    else if (is_register(operand1))
+        operand1_words = 0;          /* register goes in shared word */
+    else if (is_matrix(operand1))
+        operand1_words = 2;          /* matrix needs 2 words */
+    else
+        operand1_words = 1;          /* direct addressing */
+}
+
+addr1 = ctx->current_ic + 1;
+addr2 = ctx->current_ic + 1 + operand1_words;
     /* Process operands that reference symbols */
     /* operand 1 */
-    if (operand_count >= 1 && operand1[0] != '#' && !is_register(operand1))
+    /* operand 1 */
+if (operand_count >= 1 && operand1[0] != '#' && !is_register(operand1))
+{
+    if (encode_operand(operand1, &word, &are_bits, ctx, line_number, addr1))
     {
-        if (encode_operand(operand1, &word, &are_bits, ctx, line_number, addr1))
-        {
-            update_instruction_word(ctx->memory, addr1, word);
-        }
-        else
-        {
-            ctx->has_errors = TRUE;
-        }
+    
+        update_instruction_word(ctx->memory, addr1, word);
     }
+    else
+    {
+        ctx->has_errors = TRUE;
+    }
+}
 
     /* operand 2 */
     if (operand_count >= 2 && operand2[0] != '#' && !is_register(operand2))
+{
+    if (encode_operand(operand2, &word, &are_bits, ctx, line_number, addr2))
     {
-        if (encode_operand(operand2, &word, &are_bits, ctx, line_number, addr2))
-        {
-            update_instruction_word(ctx->memory, addr2, word);
-        }
-        else
-        {
-            ctx->has_errors = TRUE;
-        }
+        update_instruction_word(ctx->memory, addr2, word);
     }
-
-    /* Update IC by instruction length */
-    ctx->current_ic += get_instruction_length(instruction_name, operand1, operand2);
+    else
+    {
+        ctx->has_errors = TRUE;
+    }
 }
+/* Update IC by instruction length */
+    instruction_length = get_instruction_length(instruction_name, operand1, operand2);
+    ctx->current_ic += instruction_length;
 
+}
 /* Process .entry directive */
 void process_entry_directive(const char *line, SecondPassContext *ctx, int line_number)
 {
@@ -236,8 +279,10 @@ Boolean encode_operand(const char *operand, MachineWord *word, int *are_bits,
                        SecondPassContext *ctx, int line_number, int target_address)
 {
     Symbol *symbol;
-    char symbol_name[MAX_LABEL_LENGTH];
+    
 
+    
+    char symbol_name[MAX_LABEL_LENGTH];
     /* Extract symbol name (handle matrix addressing) */
     if (strchr(operand, '['))
     {
@@ -266,23 +311,19 @@ Boolean encode_operand(const char *operand, MachineWord *word, int *are_bits,
         return FALSE;
     }
 
-    /* Set ARE bits and address based on symbol type */
+    /* Set ARE bits and address based on symbol type - רק פעם אחת! */
     if (symbol->type == EXTERN_SYM)
     {
         *are_bits = ARE_EXTERNAL;
-        word->bits = 0; /* External symbols have address 0 in object code */
-        /* Add to external references list */
+        word->bits = ARE_EXTERNAL;  
         add_external_reference(ctx, symbol_name, target_address);
     }
     else
     {
         *are_bits = ARE_RELOCATABLE;
-        word->bits = (symbol->address & 0x3FF); /* 10 bits mask */
+        word->bits = ((symbol->address & 0xFF) << 2) | ARE_RELOCATABLE;
     }
-
-    /* Set ARE bits in word (bits 0-1) */
-    word->bits = (word->bits & 0x3FC) | (*are_bits & 0x3);
-
+    
     return TRUE;
 }
 
@@ -295,28 +336,38 @@ int get_instruction_length(const char *instruction, const char *operand1, const 
 
     int op1_is_reg = has_op1 && is_register(operand1);
     int op2_is_reg = has_op2 && is_register(operand2);
+    int op1_is_matrix = has_op1 && is_matrix(operand1);
+    int op2_is_matrix = has_op2 && is_matrix(operand2);
 
-    /* add words for immediate or direct/matrix operands */
-    if (has_op1 && (operand1[0] == '#' || !op1_is_reg))
-        length++;
-    if (has_op2 && (operand2[0] == '#' || !op2_is_reg))
-        length++;
-
-    /* registers: one word if there is at least one register operand,
-       but if both are registers they still share only one word */
-    if (op1_is_reg && op2_is_reg)
+    /* add words for NON-register operands */
+    if (has_op1 && !op1_is_reg)
     {
-       
-        length += 1;
+        if (operand1[0] == '#')
+            length++;  /* immediate = 1 word */
+        else if (op1_is_matrix)
+            length += 2;  /* matrix = 2 words */
+        else
+            length++;  /* direct = 1 word */
     }
-    else if (op1_is_reg ^ op2_is_reg)
+
+    if (has_op2 && !op2_is_reg) 
+    {
+        if (operand2[0] == '#')
+            length++;  /* immediate = 1 word */
+        else if (op2_is_matrix)
+            length += 2;  /* matrix = 2 words */
+        else
+            length++;  /* direct = 1 word */
+    }
+
+    /* registers: add ONE word if there are ANY register operands */
+    if (op1_is_reg || op2_is_reg)
     {
         length += 1;
     }
 
     return length;
 }
-
 /* Add external reference to list */
 void add_external_reference(SecondPassContext *ctx, const char *symbol_name, int address)
 {
@@ -359,19 +410,30 @@ char *decimal_to_base4(int decimal, int digits)
     char *result = malloc(digits + 1);
     int i;
     char base4_chars[] = {'a', 'b', 'c', 'd'};
+    unsigned int value;
 
     if (!result)
         return NULL;
-
     result[digits] = '\0';
 
+    /* Handle negative numbers using two's complement within 10 bits */
+    if (decimal < 0)
+    {
+        value = (1 << 10) + decimal; /* Convert to positive using 10-bit two's complement */
+    }
+    else
+    {
+        value = decimal;
+    }
+
+    /* Ensure value fits in 10 bits (0-1023) */
+    value &= 0x3FF;
     /* Convert to base 4 from right to left */
     for (i = digits - 1; i >= 0; i--)
     {
-        result[i] = base4_chars[decimal % 4];
-        decimal /= 4;
+        result[i] = base4_chars[value % 4];
+        value /= 4;
     }
-
     return result;
 }
 

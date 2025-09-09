@@ -1,7 +1,23 @@
+/**
+ * @file symbol_table.c
+ * @brief Symbol table management for the assembler
+ * 
+ * This module manages the symbol table used during assembly.
+ * It handles label definitions, symbol lookups, and validation
+ * of symbol usage including entry/extern directives.
+ */
+
 #include "symbol_table.h"
 
-extern Symbol *symbol_table_head;
+/* Global symbol table head pointer */
+Symbol *symbol_table_head = NULL;
 
+/**
+ * @brief Add a new symbol to the symbol table
+ * @param name Symbol name
+ * @param address Symbol address
+ * @param type Symbol type (CODE, DATA, EXTERN_SYM)
+ */
 void add_symbol(const char *name, int address, SymbolType type) {
     Symbol *new_symbol = (Symbol *)malloc(sizeof(Symbol));
     if (!new_symbol) {
@@ -18,6 +34,15 @@ void add_symbol(const char *name, int address, SymbolType type) {
     symbol_table_head = new_symbol;
 }
 
+/**
+ * @brief Add symbol to table with comprehensive validation
+ * @param label Symbol name to add
+ * @param address Symbol address
+ * @param type Symbol type
+ * @param line_number Current line number for error reporting
+ * @param is_entry Whether this is an entry directive
+ * @return 1 on success, 0 on error
+ */
 int add_symbol_to_table(const char *label, int address, SymbolType type,
                         int line_number, int is_entry) {
     int addr_to_set;

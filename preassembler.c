@@ -290,16 +290,15 @@ Boolean preassembler(const char *filename)
                 }
 
                 if (first_word_after_label &&
-                    (strcmp(first_word_after_label, MACRO_START) == 0 ||
-                     strcmp(first_word_after_label, MACRO_END) == 0 ||
-                     find_macro(macro_table, first_word_after_label)))
-                {
-                    REPORT_ERROR_ONLY(LABEL_ON_MACRO_LINE, line_number, "Label not allowed on macro line", label_name, content_after_label);
-                    free(first_word);
-                    if (first_word_after_label)
-                        free(first_word_after_label);
-                    continue;
-                }
+    (strcmp(first_word_after_label, MACRO_START) == 0 ||
+     strcmp(first_word_after_label, MACRO_END) == 0))
+{
+    REPORT_ERROR_ONLY(LABEL_ON_MACRO_LINE, line_number, "Label not allowed on macro line", label_name, content_after_label);
+    free(first_word);
+    if (first_word_after_label)
+        free(first_word_after_label);
+    continue;
+}
 
                 if (!add_label_to_table(label_table, label_name, line_number))
                 {
@@ -400,12 +399,71 @@ Boolean preassembler(const char *filename)
         }
         else
         {
-            /* Regular line - copy as-is to output */
-            fputs(line, output);
-            len = strlen(line);
-            if (len > 0 && line[len - 1] != '\n')
+            /* Check if this line has a label followed by a macro call */
+            if (has_label(line))
             {
-                fputc('\n', output);
+                char *line_label = extract_label_name(line);
+                char *line_content = get_content_after_label(line);
+                char *word_after_label = NULL;
+                
+                if (line_content)
+                {
+                    word_after_label = get_first_word(line_content);
+                }
+                
+                /* Check if the word after label is a macro */
+                if (word_after_label && find_macro(macro_table, word_after_label))
+                {
+                    macro = find_macro(macro_table, word_after_label);
+                    macro_data = (MacroData *)macro->data;
+                    
+                    if (macro_data && macro_data->line_count > 0)
+                    {
+                        /* Write label with first line of macro */
+                        fprintf(output, "%s: %s", line_label, macro_data->content[0]);
+                        len = strlen(macro_data->content[0]);
+                        if (len > 0 && macro_data->content[0][len - 1] != '\n')
+                        {
+                            fputc('\n', output);
+                        }
+                        
+                        /* Write remaining lines of macro */
+                        for (j = 1; j < macro_data->line_count; j++)
+                        {
+                            fputs(macro_data->content[j], output);
+                            len = strlen(macro_data->content[j]);
+                            if (len > 0 && macro_data->content[j][len - 1] != '\n')
+                            {
+                                fputc('\n', output);
+                            }
+                        }
+                    }
+                }
+                else
+                {
+                    /* Not a macro call - copy line as-is */
+                    fputs(line, output);
+                    len = strlen(line);
+                    if (len > 0 && line[len - 1] != '\n')
+                    {
+                        fputc('\n', output);
+                    }
+                }
+                
+                /* Cleanup */
+                if (line_label) free(line_label);
+                if (line_content) free(line_content);
+                if (word_after_label) free(word_after_label);
+            }
+            else
+            {
+                /* Regular line - copy as-is to output */
+                fputs(line, output);
+                len = strlen(line);
+                if (len > 0 && line[len - 1] != '\n')
+                {
+                    fputc('\n', output);
+                }
             }
         }
 

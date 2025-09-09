@@ -1,78 +1,95 @@
-# Two-Pass Assembler
+# Assembly Language Assembler
 
-אסמבלר דו-מעבר עם מרחיב מאקרו לקורס "מעבדה במערכות".  
-מתרגם קבצי assembly (.as) לקוד מכונה בפורמט base-4.
-
-## Quick Start
-
-```bash
-# Build
-make
-
-# Run
-./assembler filename
-```
-
-## Features
-
-- ✅ **Pre-assembler** עם מרחיב מאקרו
-- ✅ **16 פקודות assembly** (MOV, ADD, JMP, etc.)
-- ✅ **4 מצבי מיען** (immediate, direct, matrix, register)
-- ✅ **טיפול מקיף בשגיאות**
-- ✅ **פלט base-4 מותאם** (.obj, .ext, .ent)
-
-## Technical Specs
-
-| מאפיין | ערך |
-|---------|-----|
-| זיכרון | 256 תאים × 10 ביט |
-| כתובת טעינה | 100 |
-| תקן C | ANSI C90 |
-| פורמט מספרים | Base-4 (a=0,b=1,c=2,d=3) |
-
-## Usage Example
-
-```assembly
-; example.as
-MAIN: MOV #5, r1
-      ADD r1, #3
-      PRN r1
-      STOP
-```
-
-```bash
-./assembler example
-# יוצר: example.obj (ואם צריך: example.ext, example.ent)
-```
+This project is a two-pass assembler for a custom assembly language. It translates assembly source files into machine code and generates appropriate output files.
 
 ## Project Structure
 
+### Core Files
+
+- **assembler.c** - Main entry point and file processing orchestrator
+- **assembler.h** - Main header file with common definitions
+- **types.h** - Type definitions and constants used throughout the project
+
+### Processing Phases
+
+1. **preassembler.h** - Pre-processing phase (macro expansion)
+2. **first_pass.c/.h** - First pass analysis and symbol table building
+3. **second_pass.c/.h** - Second pass code generation and address resolution
+4. **memory_builder.c/.h** - Memory image construction
+5. **output_writer.c/.h** - Final output file generation
+
+### Support Modules
+
+- **symbol_table.c/.h** - Symbol table management
+- **instruction_table.c/.h** - Instruction definitions and validation
+- **instruction_validation.c/.h** - Instruction syntax validation
+- **line_analysis.c/.h** - Line parsing and analysis utilities
+- **line_parser.c** - Line parsing implementation
+- **word_extractor.c** - Word extraction utilities
+- **macro_and_label_func.c** - Macro and label processing functions
+- **file_utils.c** - File handling utilities
+- **error_handling.c** - Error reporting and management
+
+## Assembly Process
+
+### Phase 1: Pre-assembler
+- Processes macro definitions and expansions
+- Generates .am files for further processing
+
+### Phase 2: First Pass
+- Analyzes syntax and semantics
+- Builds symbol table with labels and their addresses
+- Counts instructions and data declarations
+- Reports syntax errors
+
+### Phase 3: Memory Image Building
+- Constructs the memory representation
+- Allocates space for instructions and data
+- Prepares data structures for code generation
+
+### Phase 4: Second Pass
+- Resolves symbol references
+- Generates final machine code
+- Processes .entry and .extern directives
+- Creates output files
+
+## Output Files
+
+The assembler generates several output files:
+- **.ob** - Object file with machine code
+- **.ent** - Entry symbols file
+- **.ext** - External symbols file
+
+## Usage
+
+```bash
+./assembler <source_file1> [source_file2] ...
 ```
-├── assembler.c           # Main entry point
-├── preassembler.c        # Macro expansion
-├── first_pass.c          # Symbol table building
-├── symbol_table.c        # Symbol management
-├── instruction_*.c       # Instruction handling
-├── line_*.c              # Line parsing
-├── error_handling.c      # Error management
-└── Makefile              # Build script
+
+## Build
+
+```bash
+make
 ```
+
+## Key Data Structures
+
+- **SymbolTable** - Stores labels, addresses, and symbol attributes
+- **MemoryImage** - Represents the final memory layout
+- **InstructionTable** - Contains instruction definitions and opcodes
+- **MachineWord** - Represents encoded machine instructions
 
 ## Error Handling
 
-הפרויקט מזהה ומדווח על:
-- שגיאות מאקרו (הגדרה כפולה, שימוש לפני הגדרה)
-- פקודות לא תקינות
-- אופרנדים מחוץ לטווח
-- תוויות לא מוגדרות
-- חריגה מגבולות זיכרון
+The assembler performs comprehensive error checking:
+- Syntax validation
+- Symbol redefinition detection
+- Address range validation
+- Instruction format verification
+- Operand type checking
 
-## Build Requirements
+## Memory Layout
 
-- GCC עם תמיכה ב-ANSI C90
-- Make utility
-- קימפול נקי עם `-Wall -ansi -pedantic`
-
----
-
-**Course:** Systems Laboratory • **Year:** 2025 • **Author:** Rachely Glb
+- **Instructions** - Start at address 100
+- **Data** - Allocated after instructions
+- **External references** - Tracked separately for linking

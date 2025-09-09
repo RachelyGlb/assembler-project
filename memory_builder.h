@@ -28,5 +28,6 @@ int get_addressing_method(const char *operand);
 MachineWord encode_first_word(int opcode, int src_method, int dest_method);
 MachineWord encode_immediate_operand(int value);
 MachineWord encode_register_operand(int src_reg, int dest_reg);
+void extract_matrix_registers(const char *matrix_operand, int *row_reg, int *col_reg);
 
 #endif /* MEMORY_BUILDER_H */

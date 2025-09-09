@@ -11,8 +11,8 @@ Boolean is_reserved_word(const char *word)
 {
     /* Assembly instructions */
     const char *instructions[] = {
-        "mov", "cmp", "add", "sub", "not", "clr", "lea", "inc",
-        "dec", "jmp", "bne", "red", "prn", "jsr", "rts", "stop"};
+        "mov", "cmp", "add", "sub", "lea", "clr", "not", "inc",
+        "dec", "jmp", "bne", "jsr", "red", "prn", "rts", "stop"};
 
     /* Directives */
     const char *directives[] = {

@@ -1,3 +1,12 @@
+/**
+ * @file first_pass.c
+ * @brief First pass of the assembler - syntax analysis and symbol table building
+ * 
+ * This module implements the first pass of the two-pass assembler.
+ * It analyzes the source code syntax, builds the symbol table,
+ * and performs initial validation of the assembly code.
+ */
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -7,8 +16,14 @@
 #include "line_analysis.h"
 #include "symbol_table.h"
 #include "instruction_validation.h"
+#include <stdarg.h> 
 
-
+/**
+ * @brief Print formatted error message with line number
+ * @param line_number Line number where error occurred (0 for general errors)
+ * @param format Printf-style format string
+ * @param ... Variable arguments for format string
+ */
 void error(int line_number, const char *format, ...)
 {
     va_list args;
@@ -28,6 +43,14 @@ void error(int line_number, const char *format, ...)
     va_end(args);
 }
 
+/**
+ * @brief Adjust data symbol addresses by adding ICF (final instruction counter)
+ * @param icf Final instruction counter value
+ * 
+ * This function is called after the first pass to adjust all data symbol
+ * addresses by adding the final instruction counter value, ensuring proper
+ * memory layout where data follows instructions.
+ */
 static void adjust_data_addresses_with_icf(int icf) {
     Symbol *s;
     for (s = symbol_table_head; s; s = s->next) {
@@ -37,6 +60,17 @@ static void adjust_data_addresses_with_icf(int icf) {
     }
 }
 
+/**
+ * @brief Main first pass function - analyzes source file and builds symbol table
+ * @param filename Name of the .am file to process
+ * 
+ * The first pass performs the following operations:
+ * 1. Reads and parses each line of the source file
+ * 2. Identifies and validates labels, instructions, and directives
+ * 3. Builds the symbol table with appropriate addresses
+ * 4. Counts instructions and data for memory allocation
+ * 5. Reports syntax errors and validation issues
+ */
 void first_pass(const char *filename) {
     char line[MAX_LINE_LENGTH];
     int line_number = 0;
@@ -140,11 +174,29 @@ void first_pass(const char *filename) {
             }
 
             if (strstr(line, ".data")) {
-                DC += count_data_items(line);
+                int count = count_data_items(line);
+printf("DEBUG: .data line '%s' counted %d items, DC before: %d\n", line, count, DC);
+DC += count;
+printf("DEBUG: DC after: %d\n", DC);
+                if (IC + DC > 256) {
+                    printf("Error line %d: Memory overflow - total program size exceeds 256 words\n", line_number);
+                    has_errors = 1;}
             } else if (strstr(line, ".string")) {
-                DC += count_string_length(line);
+                int count = count_string_length(line);
+printf("DEBUG: .string line '%s' counted %d chars, DC before: %d\n", line, count, DC);
+DC += count;
+printf("DEBUG: DC after: %d\n", DC);
+                if (IC + DC > 256) {
+                    printf("Error line %d: Memory overflow - total program size exceeds 256 words\n", line_number);
+                    has_errors = 1;}
             } else if (strstr(line, ".mat")) {
-                DC += count_matrix_items(line);
+                int count = count_matrix_items(line);
+printf("DEBUG: .mat line '%s' counted %d items, DC before: %d\n", line, count, DC);
+DC += count;
+printf("DEBUG: DC after: %d\n", DC);
+                if (IC + DC > 256) {
+                    printf("Error line %d: Memory overflow - total program size exceeds 256 words\n", line_number);
+                    has_errors = 1;}
             }
         }
         /* ===== inst code ===== */
@@ -170,14 +222,22 @@ void first_pass(const char *filename) {
 
            
             words = count_command_words(has_label ? line_for_validation : line);
-
+            printf("DEBUG first_pass: instruction '%s' counts as %d words, IC before: %d\n", 
+       has_label ? line_for_validation : line, words, IC);
             if (!validate_command_line(line_for_validation, line_number)) {
                 has_errors = 1;
-                IC += words;     
+                IC += words; 
+                    
                 continue;
             }
 
-            IC += words;         
+            IC += words;
+            printf("DEBUG first_pass: IC after: %d\n", IC);
+            if (IC > 255) {
+                printf("Error line %d: Memory overflow - instruction area exceeds available memory\n", line_number);
+                has_errors = 1;
+                }
+
         }else {
             has_errors= 1;
         }
@@ -197,7 +257,6 @@ void first_pass(const char *filename) {
     printf("Final IC = %d (ICF)\n", IC);
     printf("Final DC = %d\n", DC);
 
-    /* במידת הצורך: אפשר להדפיס כאן את טבלת הסמלים
+
        print_symbol_table();
-    */
 }

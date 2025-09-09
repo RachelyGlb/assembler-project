@@ -47,7 +47,7 @@ typedef struct
 /* simple memory structure */
 typedef struct
 {
-    int instruction_memory[256];
+    MachineWord instruction_image[256];
     int data_memory[256];
     MachineWord data_image[256]; /* added for compatibility */
     int instruction_count;
