@@ -36,10 +36,7 @@ typedef struct
 } MacroData;
 
 /* Type aliases for clarity */
-typedef GenericTable MacroTable;
-typedef GenericTable LabelTable;
 typedef GenericNode MacroNode;
-typedef GenericNode LabelNode;
 
 /* FUNCTION PROTOTYPES */
 
@@ -54,7 +51,6 @@ GenericTable *create_macro_table(void);
 void free_macro_table(GenericTable *table);
 Boolean add_macro(GenericTable *table, const char *name, char **content, int line_count);
 GenericNode *find_macro(GenericTable *table, const char *name);
-Boolean is_macro_name(GenericTable *table, const char *name);
 
 GenericTable *create_label_table(void);
 void free_label_table(GenericTable *table);
@@ -80,7 +76,6 @@ Boolean has_extraneous_text_after_words(const char *line, int expected_words);
 
 /* File utilities */
 Boolean file_exists(const char *filename);
-void cleanup_and_exit(MacroTable *table, FILE *input, FILE *output);
 void cleanup_macro_lines(char **lines, int count);
 char *create_filename_with_extension(const char *base_name, const char *extension);
 
@@ -119,19 +114,6 @@ Boolean preassembler(const char *filename);
         free(ptr2);                                                      \
     }                                                                    \
     continue
-
-#define REPORT_ERROR_AND_BREAK(error_type, line_num, msg, ptr1, ptr2) \
-    print_error(error_type, line_num, msg);                           \
-    has_errors = TRUE;                                                \
-    if (ptr1)                                                         \
-    {                                                                 \
-        free(ptr1);                                                   \
-    }                                                                 \
-    if (ptr2)                                                         \
-    {                                                                 \
-        free(ptr2);                                                   \
-    }                                                                 \
-    break
 
 #define REPORT_ERROR_ONLY(error_type, line_num, msg, ptr1, ptr2) \
     print_error(error_type, line_num, msg);                      \

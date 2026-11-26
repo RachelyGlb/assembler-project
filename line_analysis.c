@@ -1,5 +1,4 @@
 #include "line_analysis.h"
-#include "symbol_table.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -38,11 +37,6 @@ Boolean is_valid_label(const char *label)
     return TRUE;
 }
 
-Boolean label_exists(const char *label)
-{
-    return find_symbol(label) ? TRUE : FALSE;
-}
-
 Boolean is_comment_or_empty(const char *line)
 {
     while (*line == ' ' || *line == '\t')
@@ -50,28 +44,6 @@ Boolean is_comment_or_empty(const char *line)
         line++;
     }
     return (*line == ';' || *line == '\0' || *line == '\n') ? TRUE : FALSE;
-}
-
-Boolean is_label(const char *line)
-{
-    const char *p;
-    const char *colon;
-
-    while (*line == ' ' || *line == '\t')
-    {
-        line++;
-    }
-
-    colon = strchr(line, ':');
-    if (!colon)
-        return FALSE;
-
-    for (p = line; p < colon; p++)
-    {
-        if (!(('a' <= *p && *p <= 'z') || ('A' <= *p && *p <= 'Z') || ('0' <= *p && *p <= '9')))
-            return FALSE;
-    }
-    return TRUE;
 }
 
 Boolean is_data_or_string(const char *line)
@@ -245,18 +217,18 @@ int count_string_length(const char *line)
     int count = 0;
     const char *p;
 
-    /* חפש .string */
+    /* Look for .string */
     p = strstr(line, ".string");
     if (!p) {
         return 0;
     }
 
-    /* התקדם אחרי .string */
+    /* Advance past .string */
     p += strlen(".string");
     while (*p && (*p == ' ' || *p == '\t'))
         p++;
     
-    /* דלג על כל תו שאינו ASCII רגיל עד שתמצא תו ASCII */
+    /* Skip every character that is not regular ASCII until an ASCII character is found */
     while (*p && ((unsigned char)*p > 127 || *p < 32))
         p++;
     
@@ -264,9 +236,9 @@ int count_string_length(const char *line)
         return 0;
     }
     
-    start = p; /* התחל מכאן */
+    start = p; /* Start from here */
     
-    /* חפש סוף המחרוזת - כל תו לא-ASCII או תו בקרה */
+    /* Look for the end of the string - any non-ASCII character or control character */
     end = start;
     while (*end && (unsigned char)*end >= 32 && (unsigned char)*end <= 126)
         end++;

@@ -311,7 +311,7 @@ Boolean encode_operand(const char *operand, MachineWord *word, int *are_bits,
         return FALSE;
     }
 
-    /* Set ARE bits and address based on symbol type - רק פעם אחת! */
+    /* Set ARE bits and address based on symbol type - only once! */
     if (symbol->type == EXTERN_SYM)
     {
         *are_bits = ARE_EXTERNAL;

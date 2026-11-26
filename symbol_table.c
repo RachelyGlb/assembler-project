@@ -123,13 +123,3 @@ void print_symbol_table() {
         current = current->next;
     }
 }
-
-void free_symbol_table() {
-    Symbol *current = symbol_table_head;
-    while (current) {
-        Symbol *next = current->next;
-        free(current);
-        current = next;
-    }
-    symbol_table_head = NULL;
-}

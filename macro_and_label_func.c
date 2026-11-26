@@ -1,11 +1,5 @@
 #include "preassembler.h"
 
-/* Check if a name is a macro name */
-Boolean is_macro_name(GenericTable *table, const char *name)
-{
-    return find_in_generic_table(table, name) != NULL;
-}
-
 /* Check if a word is a reserved word */
 Boolean is_reserved_word(const char *word)
 {

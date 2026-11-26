@@ -43,34 +43,3 @@ InstructionDef *find_instruction(const char *name)
 
     return NULL;
 }
-
-/* check if instruction is valid */
-Boolean is_valid_instruction(const char *name)
-{
-    return (find_instruction(name) != NULL);
-}
-
-/* get operand count for an instruction */
-int get_instruction_operand_count(const char *name)
-{
-    InstructionDef *instr = find_instruction(name);
-
-    if (instr)
-    {
-        return instr->operands_count;
-    }
-
-    return -1; /* instruction not found */
-}
-
-/* initialize instruction table */
-void init_instruction_table(void)
-{
-    /* table is static, no initialization required */
-}
-
-/* free instruction table memory */
-void free_instruction_table(void)
-{
-    /* table is static, no free required */
-}

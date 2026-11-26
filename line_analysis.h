@@ -6,7 +6,6 @@
 
 
 Boolean is_comment_or_empty(const char *line);
-Boolean is_label(const char *line);
 Boolean is_data_or_string(const char *line); 
 Boolean is_command(const char *line);
 Boolean is_register(const char *operand);
@@ -17,7 +16,6 @@ Boolean is_label_operand(const char *operand);
 
 int extract_label(const char *line, char *label);
 Boolean is_valid_label(const char *label);
-Boolean label_exists(const char *label);
 int count_data_items(const char *line);
 int count_string_length(const char *line);
 int count_command_words(const char *line);

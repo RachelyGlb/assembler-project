@@ -34,7 +34,6 @@ typedef enum
 
 #define MAX_LINE_LENGTH 82
 #define MAX_LABEL_LENGTH 31
-#define MAX_FILENAME_LENGTH 256
 
 /* Error handling */
 void print_error(ErrorType error_type, int line_number, const char *message);
@@ -43,9 +42,6 @@ void print_error(ErrorType error_type, int line_number, const char *message);
 /* File extensions */
 #define AS_EXTENSION ".as"
 #define AM_EXTENSION ".am"
-#define OB_EXTENSION ".ob"
-#define ENT_EXTENSION ".ent"
-#define EXT_EXTENSION ".ext"
 
 /* Public API */
 Boolean process_files(int argc, char *argv[]);

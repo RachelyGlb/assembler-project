@@ -8,10 +8,8 @@
 /* additional constants */
 #define MEMORY_SIZE 256
 #define BASE_ADDRESS 100
-#define WORD_SIZE 10
 
 /* ARE bits */
-#define ARE_ABSOLUTE 0
 #define ARE_EXTERNAL 1
 #define ARE_RELOCATABLE 2
 
@@ -20,15 +18,6 @@
 #define DIRECT_ADDR 1
 #define MATRIX_ADDR 2
 #define REGISTER_ADDR 3
-
-/* aliases for backward compatibility */
-typedef enum
-{
-    IMMEDIATE_ADDRESSING = 0,
-    DIRECT_ADDRESSING = 1,
-    INDIRECT_ADDRESSING = 2, /* identical to MATRIX_ADDR */
-    REGISTER_ADDRESSING = 3
-} AddressingType;
 
 /* symbol types */
 typedef enum

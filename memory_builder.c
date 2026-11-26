@@ -241,29 +241,29 @@ void encode_string_directive(const char *line, MemoryImage *memory, int *current
     int i;
     MachineWord char_word;
 
-    /* חפש .string */
+    /* Look for .string */
     start = strstr(line, ".string");
     if (!start)
         return;
 
-    /* התקדם אחרי .string */
+    /* Advance past .string */
     start += strlen(".string");
     while (*start && (*start == ' ' || *start == '\t'))
         start++;
     
-    /* דלג על תווי Unicode עד ASCII */
+    /* Skip Unicode characters until ASCII */
     while (*start && ((unsigned char)*start > 127 || *start < 32))
         start++;
     
     if (!*start)
         return;
 
-    /* מצא סוף המחרוזת ASCII */
+    /* Find the end of the ASCII string */
     end = start;
     while (*end && (unsigned char)*end >= 32 && (unsigned char)*end <= 126)
         end++;
 
-    /* קודד כל תו */
+    /* Encode each character */
     for (i = 0; start + i < end && memory->data_count < MEMORY_SIZE; i++)
     {
         char_word.bits = (unsigned char)start[i];
@@ -271,7 +271,7 @@ void encode_string_directive(const char *line, MemoryImage *memory, int *current
         (*current_dc)++;
     }
 
-    /* הוסף null terminator */
+    /* Add a null terminator */
     if (memory->data_count < MEMORY_SIZE)
     {
         char_word.bits = 0;
@@ -642,20 +642,20 @@ void extract_matrix_registers(const char *matrix_operand, int *row_reg, int *col
     *row_reg = 0;
     *col_reg = 0;
     
-    /* חפש [r2][r7] */
+    /* Look for [r2][r7] */
     start = strchr(temp, '[');
     if (!start) return;
-    start++; /* דלג על [ */
+    start++; /* Skip the [ */
     
     middle = strchr(start, ']');
     if (!middle) return;
     *middle = '\0';
     
-    /* חלץ רגיסטר ראשון */
+    /* Extract the first register */
     if (start[0] == 'r' && isdigit(start[1]))
         *row_reg = atoi(start + 1);
     
-    /* חפש רגיסטר שני */
+    /* Look for the second register */
     start = middle + 1;
     start = strchr(start, '[');
     if (!start) return;

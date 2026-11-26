@@ -35,18 +35,3 @@ char* create_filename_with_extension(const char *filename, const char *extension
     
     return new_filename;
 }
-
-/* Cleanup function for error situations */
-void cleanup_and_exit(MacroTable *table, FILE *input, FILE *output) {
-    if (table) {
-        free_macro_table(table);
-    }
-    
-    if (input) {
-        fclose(input);
-    }
-    
-    if (output) {
-        fclose(output);
-    }
-}
