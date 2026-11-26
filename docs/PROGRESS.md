@@ -5,11 +5,121 @@ then continue with the next phase."
 
 ## Current state
 
-- **Phase 0 (Understand): finished on 2026-11-26.** Waiting for the owner's
-  answers to the decisions listed below before Phase 1 starts.
-- Next: Phase 1 (tests before fixes). No assembler code has been changed, and
-  none may be changed before the owner approves the Phase 2 plan.
+- **Phase 0 (Understand): finished 2026-11-26.**
+- **Phase 1 (Tests before fixes): finished 2026-11-26.**
+- **Phase 2 (Diagnose): finished 2026-11-26. STOPPED, waiting for the owner
+  to approve the plan below.** No assembler code has been changed. No project
+  code may be written before that approval.
+- Next: Phase 3 (correctness), following the approved plan.
 - Working branch: `claude/project-thread-l0vj7x`.
+
+## Phase 1 result
+
+- `docs/SPEC.md` (1,822 lines) now carries the owner's decisions of
+  2026-11-26 as rules tagged "[owner decision, 2026-11-26]". The section
+  "Decisions waiting for the owner" further down in this file is history:
+  all of those recommendations were approved, with one change (Q-4 uses a
+  TAB).
+- Test suite: 124 cases (`tests/valid` 56, `tests/errors` 59, `tests/cli` 9),
+  runner `tests/run_tests.sh` (POSIX sh; binary chosen with the `ASSEMBLER`
+  environment variable; a case name as argument runs one case; scratch output
+  and `diff.txt` under `tests/out/`). `tests/README.md` maps cases to SPEC
+  rules. `make test` is wired.
+- An independent reviewer rebuilt every expected output with a separate
+  reference derived from SPEC only: 56 of 56 valid cases, 59 of 59 error
+  cases and 9 of 9 cli cases match. The runner was checked against 25 fake
+  binaries (do nothing, crash, hang, wrong output) and reports none as PASS.
+- Current code against the suite, run by the orchestrator on a scratch build
+  (sources copied, a lowercase copy of the header added,
+  `gcc -Wall -ansi -pedantic *.c`): `passed 1, failed 123, total 124`. In the
+  repository itself `make test` stops with `No rule to make target
+  'assembler.h'`.
+- Known small gaps in the suite: no case for SYN-8 whitespace other than
+  space and TAB, for a macro name appearing as one word among others on a
+  statement line (MAC-3), or for an indented label; the valid group ignores
+  `warning` lines; without the `timeout` command a hang is not caught.
+
+## Phase 2 result
+
+Full reports, written by two read-only auditors:
+
+- `docs/audit/BUGS.md`: 46 bugs (BUG-01 to BUG-46), each with file and line,
+  the SPEC rules violated, a minimal input with the real output, and the
+  tests it fails; then a table of all 124 tests against bug IDs, the
+  behaviour that must not regress, and valgrind results.
+- `docs/audit/STRUCTURE.md`: 111 findings against the coding rules, the
+  proposed target modules with public functions, a mapping of every existing
+  file to its destination, and an order of refactoring steps.
+
+Claims reproduced by the orchestrator: `A: .data 6, -9, 15` produces one data
+word; a line with leading whitespace before a label aborts with
+`free(): invalid pointer`; assembling two files that both define `MAIN`
+reports `Duplicate label: MAIN` for the second.
+
+Headline facts: after discounting the format differences only 3 of 56 valid
+cases have correct machine words. 27 of the 46 bugs sit in one cluster
+(`first_pass.c`, `line_analysis.c`, `instruction_validation.c`,
+`memory_builder.c` and the operand code in `second_pass.c`), where the same
+line is tokenised three incompatible ways and there is no real parser. Both
+auditors independently recommend rewriting that cluster and the body of
+`preassembler()` instead of fixing them bug by bug. `CLAUDE.md` forbids
+rewriting a whole module without the owner's approval.
+
+### Proposed plan (waiting for approval)
+
+Stage A, foundations, one fixer each, a commit after each:
+
+1. BUG-01: rename the header include and fix the Makefile; reduce the
+   Makefile to `all`, `test`, `clean` with correct header dependencies.
+2. Remove dead code, undefined prototypes and stray files (`This`,
+   `instruction_count`, `tests/sh`, `formal_tester.*`).
+3. One error module: every diagnostic goes through one function, in the SPEC
+   format with the file name, on stdout; the passes return a status; the exit
+   status follows CLI-9 (BUG-05, BUG-06).
+4. Symbol table as a handle created and freed per input file (BUG-08,
+   BUG-13).
+5. Output writer: TAB separators and the use-after-free (BUG-02, BUG-11,
+   BUG-27).
+
+Stage B, the three rewrites that need the owner's approval:
+
+6. Instruction table completed as one `static const` table with legal modes,
+   plus one `syntax` module that parses a line into a statement structure
+   (label, kind, operands) and validates it against the table.
+7. First pass rebuilt on that parser, absorbing `memory_builder.c`,
+   `line_analysis.c` and `instruction_validation.c`; second pass reduced to
+   resolving symbols and entries (BUG-15 to BUG-26, BUG-28 to BUG-43).
+8. Pre-assembler rebuilt around a separate macro-table module, keeping blank
+   and comment lines, producing the line map and leaving label checks to the
+   first pass (BUG-03, BUG-04, BUG-07, BUG-09, BUG-10, BUG-12, BUG-44 to
+   BUG-46).
+
+Stage C: whatever still fails, one bug per fixer (BUG-14 allocation
+failures, BUG-30 memory bound, and anything the earlier steps unmask), until
+`make test` is green and valgrind is clean. Then Phase 4.
+
+### Questions waiting for the owner
+
+- Approval of the plan, in particular the three rewrites in stage B.
+- SPEC section 6.1, source-silent details, with recommended answers:
+  Q-26 print nothing on success, a usage line when there are no arguments;
+  Q-27 print a warning for a label before `.entry`/`.extern` and otherwise
+  ignore the label; Q-28 the pre-assembler reports a label before `mcro`,
+  `mcroend` or a call; Q-29 exactly one message per line, in line order
+  within each stage; Q-30 memory overflow reported once, on the line that
+  crosses the limit, and a label defined before its `.extern` reported on the
+  `.extern` line; Q-31 output files left from an earlier run are removed when
+  the current run does not produce them; Q-32 a missing final newline and CR
+  LF endings are accepted, and a program with no statements yields an `.ob`
+  holding only `a<TAB>a`; Q-33 a file that cannot be opened does not stop the
+  remaining files.
+- A gap the reviewer found: after a faulty `mcro` line, the lines up to
+  `mcroend` are still treated as the macro body and produce no further
+  messages (ten tests assume this; SPEC is silent). Recommended: yes.
+- Publication hygiene: `README.md` contains an e-mail address; `CLAUDE.md`
+  names the course number and links to the two friends' repositories; the git
+  history has Hebrew commit messages; `formal_tester.as/.ob` look like a
+  booklet example and the `.ob` was produced by the buggy program.
 
 ## Done in Phase 0
 
