@@ -2,23 +2,24 @@
  * line_map.c - the map from .am line numbers to .as line numbers.
  *
  * The map is an array of .as line numbers indexed by the .am line number
- * minus one. The array doubles when it is full. See line_map.h for the
+ * minus one. The array grows when it is full. See line_map.h for the
  * contracts.
  */
 #include "line_map.h"
 
 #include <stdlib.h>
 
-/* The first size of the array, and its growth factor. */
+#include "util.h"
+
+/* The first size of the array. */
 #define MAP_INITIAL_CAPACITY 64
-#define MAP_GROWTH_FACTOR 2
 
 /* The line map of one source file. */
 struct LineMap
 {
     int *source_lines; /* The .as line of every .am line; NULL while empty. */
     int count;         /* The number of .am lines recorded. */
-    int capacity;      /* The number of elements allocated. */
+    size_t capacity;   /* The number of elements allocated. */
 };
 
 /* Creates an empty line map; see line_map.h. */
@@ -48,22 +49,15 @@ void line_map_destroy(LineMap *map)
 /* Records the origin of the next .am line; see line_map.h. */
 Boolean line_map_append(LineMap *map, int source_line)
 {
-    int capacity;
-    int *source_lines;
+    int *source_lines = (int *)util_reserve(map->source_lines, &map->capacity,
+                                            (size_t)map->count + 1,
+                                            MAP_INITIAL_CAPACITY, sizeof(int));
 
-    if (map->count == map->capacity)
+    if (source_lines == NULL)
     {
-        capacity = (map->capacity == 0) ? MAP_INITIAL_CAPACITY
-                                        : map->capacity * MAP_GROWTH_FACTOR;
-        source_lines = (int *)realloc(map->source_lines,
-                                      (size_t)capacity * sizeof(int));
-        if (source_lines == NULL)
-        {
-            return FALSE;
-        }
-        map->source_lines = source_lines;
-        map->capacity = capacity;
+        return FALSE;
     }
+    map->source_lines = source_lines;
     map->source_lines[map->count++] = source_line;
     return TRUE;
 }

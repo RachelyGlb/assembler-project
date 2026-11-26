@@ -1,7 +1,7 @@
 /*
  * reference_list.c - an ordered list of (name, address) pairs.
  *
- * The list is an array that doubles when it is full, so a reference is
+ * The list is an array that grows when it is full, so a reference is
  * reached by its position in constant time. See reference_list.h for the
  * contracts.
  */
@@ -11,9 +11,8 @@
 
 #include "util.h"
 
-/* The first size of the array, and its growth factor. */
+/* The first size of the array. */
 #define LIST_INITIAL_CAPACITY 16
-#define LIST_GROWTH_FACTOR 2
 
 /* One reference. */
 typedef struct
@@ -27,7 +26,7 @@ struct ReferenceList
 {
     Reference *items; /* The references; NULL while the list is empty. */
     int count;        /* The number of references stored. */
-    int capacity;     /* The number of elements allocated. */
+    size_t capacity;  /* The number of elements allocated. */
 };
 
 /* Creates an empty list; see reference_list.h. */
@@ -69,23 +68,16 @@ void reference_list_destroy(ReferenceList *list)
  */
 static Boolean reserve_item(ReferenceList *list)
 {
-    int capacity;
-    Reference *items;
+    Reference *items = (Reference *)util_reserve(list->items, &list->capacity,
+                                                 (size_t)list->count + 1,
+                                                 LIST_INITIAL_CAPACITY,
+                                                 sizeof(Reference));
 
-    if (list->count < list->capacity)
-    {
-        return TRUE;
-    }
-    capacity = (list->capacity == 0) ? LIST_INITIAL_CAPACITY
-                                     : list->capacity * LIST_GROWTH_FACTOR;
-    items = (Reference *)realloc(list->items,
-                                 (size_t)capacity * sizeof(Reference));
     if (items == NULL)
     {
         return FALSE;
     }
     list->items = items;
-    list->capacity = capacity;
     return TRUE;
 }
 

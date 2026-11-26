@@ -5,6 +5,9 @@
  * allocate return NULL (or READ_NO_MEMORY) when memory is exhausted; the
  * caller owns what they return and frees it with free(). Nothing here
  * prints: a failure is returned and the caller reports it.
+ *
+ * util_reserve is the one place that enlarges an array: every array of the
+ * program that grows with the input grows through it.
  */
 #ifndef UTIL_H
 #define UTIL_H
@@ -76,6 +79,26 @@ char *util_copy_text(const char *text, size_t length);
  * Returns base followed by extension, or NULL when memory is exhausted.
  */
 char *util_make_file_name(const char *base, const char *extension);
+
+/*
+ * Makes sure that a heap array has room for a number of elements. An array
+ * that is too small grows to its first size and then by doubling until it
+ * is large enough; the elements stored so far are kept. The size of the
+ * array in bytes is checked before it is computed, so it cannot overflow.
+ *   array             the array, or NULL when nothing was allocated yet
+ *   capacity          the address of the number of elements allocated; it
+ *                     must hold 0 for a NULL array, and it is updated when
+ *                     the array grows
+ *   needed            the number of elements that must fit, at least 1
+ *   initial_capacity  the first size of the array in elements, at least 1
+ *   element_size      the size of one element in bytes, at least 1
+ * Returns the array, which may have moved, so the caller stores the result
+ * in place of the old pointer. Returns NULL when memory is exhausted or the
+ * size cannot be represented; the old array and *capacity are then
+ * unchanged, and the old array still belongs to the caller.
+ */
+void *util_reserve(void *array, size_t *capacity, size_t needed,
+                   size_t initial_capacity, size_t element_size);
 
 /*
  * Reads the next line of a text file, of any length, into a heap buffer

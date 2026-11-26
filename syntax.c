@@ -65,9 +65,8 @@
 #define SIMPLE_OPERAND_WORDS 1
 #define MATRIX_OPERAND_WORDS 2
 
-/* The first size of the array of data values, and its growth factor. */
+/* The first size of the array of data values. */
 #define VALUES_INITIAL_CAPACITY 8
-#define VALUES_GROWTH_FACTOR 2
 
 /* What is wrong with a candidate label name, if anything. */
 typedef enum
@@ -101,7 +100,7 @@ struct Statement
     char *directive_symbol;         /* The operand of .entry/.extern; owned. */
     int *values;                    /* The listed data values; owned. */
     int value_count;                /* The number of listed values. */
-    int value_capacity;             /* The number of elements allocated. */
+    size_t value_capacity;          /* The number of elements allocated. */
     int data_count;                 /* The number of data words taken. */
 };
 
@@ -306,24 +305,17 @@ static Boolean read_integer(const char *start, const char *end, long *value)
 static Boolean append_value(Parser *parser, int value)
 {
     Statement *statement = parser->statement;
-    int capacity;
-    int *values;
+    int *values = (int *)util_reserve(statement->values,
+                                      &statement->value_capacity,
+                                      (size_t)statement->value_count + 1,
+                                      VALUES_INITIAL_CAPACITY, sizeof(int));
 
-    if (statement->value_count == statement->value_capacity)
+    if (values == NULL)
     {
-        capacity = (statement->value_capacity == 0)
-                       ? VALUES_INITIAL_CAPACITY
-                       : statement->value_capacity * VALUES_GROWTH_FACTOR;
-        values = (int *)realloc(statement->values,
-                                (size_t)capacity * sizeof(int));
-        if (values == NULL)
-        {
-            parser->no_memory = TRUE;
-            return FALSE;
-        }
-        statement->values = values;
-        statement->value_capacity = capacity;
+        parser->no_memory = TRUE;
+        return FALSE;
     }
+    statement->values = values;
     statement->values[statement->value_count++] = value;
     return TRUE;
 }
@@ -595,28 +587,6 @@ static void parse_symbol_operand(Parser *parser, const char *text)
 }
 
 /*
- * Looks up the directive that a piece of the line names.
- *   parser  the parser of the line
- *   start   the first character of the piece
- *   end     the position just after the piece
- *   kind    receives the directive, or DIRECTIVE_NONE
- * Returns FALSE when memory is exhausted.
- */
-static Boolean lookup_directive(Parser *parser, const char *start,
-                                const char *end, DirectiveKind *kind)
-{
-    char *name = copy_piece(parser, start, end);
-
-    if (name == NULL)
-    {
-        return FALSE;
-    }
-    *kind = directive_find(name);
-    free(name);
-    return TRUE;
-}
-
-/*
  * Reports a first field that starts with a dot and is not a directive: a
  * directive glued to its operand (SYN-17, ERR-36) or an unknown directive
  * (ERR-18).
@@ -628,18 +598,14 @@ static void report_unknown_directive(Parser *parser, const char *start,
                                      const char *end)
 {
     const char *name_end = start + 1;
-    DirectiveKind kind;
 
     /* A directive name is a dot and lowercase letters (DIR-2). */
     while (islower((unsigned char)*name_end))
     {
         name_end++;
     }
-    if (!lookup_directive(parser, start, name_end, &kind))
-    {
-        return;
-    }
-    if (kind != DIRECTIVE_NONE)
+    if (directive_find_text(start, (size_t)(name_end - start)) !=
+        DIRECTIVE_NONE)
     {
         fail_at(parser,
                 "the directive name %.*s is not followed by white space", start,
@@ -658,13 +624,8 @@ static void parse_directive(Parser *parser, const char *start)
 {
     Statement *statement = parser->statement;
     const char *end = util_skip_field(start);
-    DirectiveKind kind;
 
-    if (!lookup_directive(parser, start, end, &kind))
-    {
-        return;
-    }
-    switch (kind)
+    switch (directive_find_text(start, (size_t)(end - start)))
     {
     case DIRECTIVE_DATA:
         statement->kind = STATEMENT_DATA;
@@ -1022,22 +983,13 @@ static void report_unknown_operation(Parser *parser, const char *start,
                                      const char *end)
 {
     const char *name_end = start;
-    char *name;
-    Boolean glued;
 
     /* An operation name is made of lowercase letters (ENC-14). */
     while (islower((unsigned char)*name_end))
     {
         name_end++;
     }
-    name = copy_piece(parser, start, name_end);
-    if (name == NULL)
-    {
-        return;
-    }
-    glued = (instruction_find(name) != NULL) ? TRUE : FALSE;
-    free(name);
-    if (glued)
+    if (instruction_find_text(start, (size_t)(name_end - start)) != NULL)
     {
         fail_at(parser,
                 "the operation name %.*s is not followed by white space", start,
@@ -1056,14 +1008,9 @@ static void parse_instruction(Parser *parser, const char *start)
 {
     Statement *statement = parser->statement;
     const char *end = util_skip_field(start);
-    char *name = copy_piece(parser, start, end);
 
-    if (name == NULL)
-    {
-        return;
-    }
-    statement->instruction = instruction_find(name);
-    free(name);
+    statement->instruction =
+        instruction_find_text(start, (size_t)(end - start));
     if (statement->instruction == NULL)
     {
         report_unknown_operation(parser, start, end);
@@ -1080,8 +1027,8 @@ static void parse_instruction(Parser *parser, const char *start)
  * not stored.
  *   parser  the parser of the line
  *   first   the first field of the line
- * Returns the position of the directive when the line has this form, first
- * when it does not, or NULL when memory is exhausted.
+ * Returns the position of the directive when the line has this form, and
+ * first when it does not.
  */
 static const char *skip_ignored_label(Parser *parser, const char *first)
 {
@@ -1093,10 +1040,8 @@ static const char *skip_ignored_label(Parser *parser, const char *first)
     {
         return first;
     }
-    if (!lookup_directive(parser, second, util_skip_field(second), &kind))
-    {
-        return NULL;
-    }
+    kind = directive_find_text(second,
+                               (size_t)(util_skip_field(second) - second));
     if (kind != DIRECTIVE_ENTRY && kind != DIRECTIVE_EXTERN)
     {
         return first;
@@ -1197,7 +1142,7 @@ static void parse_line(Parser *parser, const char *line)
         return;
     }
     start = skip_ignored_label(parser, util_skip_spaces(line));
-    if (start != NULL && !parser->statement->label_ignored)
+    if (!parser->statement->label_ignored)
     {
         start = parse_label(parser, start);
     }

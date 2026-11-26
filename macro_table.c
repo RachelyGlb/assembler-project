@@ -2,7 +2,7 @@
  * macro_table.c - the macros of one source file.
  *
  * The table is a singly linked list of macros in the order of definition.
- * The body of a macro is an array of lines that doubles when it is full, so
+ * The body of a macro is an array of lines that grows when it is full, so
  * a line is reached by its index in constant time. See macro_table.h for
  * the contracts.
  */
@@ -13,9 +13,8 @@
 
 #include "util.h"
 
-/* The first size of the array of body lines, and its growth factor. */
+/* The first size of the array of body lines. */
 #define BODY_INITIAL_CAPACITY 8
-#define BODY_GROWTH_FACTOR 2
 
 /* One line of a macro body. */
 typedef struct
@@ -30,7 +29,7 @@ struct Macro
     char *name;         /* The name; owned. */
     BodyLine *lines;    /* The body lines; owned; NULL while empty. */
     int line_count;     /* The number of body lines in use. */
-    int line_capacity;  /* The number of body lines allocated. */
+    size_t line_capacity; /* The number of body lines allocated. */
     struct Macro *next; /* The macro defined after this one. */
 };
 
@@ -132,24 +131,17 @@ Macro *macro_table_add(MacroTable *table, const char *name)
  */
 static Boolean reserve_body_line(Macro *macro)
 {
-    int capacity;
-    BodyLine *lines;
+    BodyLine *lines = (BodyLine *)util_reserve(macro->lines,
+                                               &macro->line_capacity,
+                                               (size_t)macro->line_count + 1,
+                                               BODY_INITIAL_CAPACITY,
+                                               sizeof(BodyLine));
 
-    if (macro->line_count < macro->line_capacity)
-    {
-        return TRUE;
-    }
-    capacity = (macro->line_capacity == 0)
-                   ? BODY_INITIAL_CAPACITY
-                   : macro->line_capacity * BODY_GROWTH_FACTOR;
-    lines = (BodyLine *)realloc(macro->lines,
-                                (size_t)capacity * sizeof(BodyLine));
     if (lines == NULL)
     {
         return FALSE;
     }
     macro->lines = lines;
-    macro->line_capacity = capacity;
     return TRUE;
 }
 

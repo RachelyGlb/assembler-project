@@ -74,14 +74,34 @@ static const Directive directive_table[] = {
     {".entry", DIRECTIVE_ENTRY},
     {".extern", DIRECTIVE_EXTERN}};
 
+/*
+ * Tells whether a word of the language is exactly a piece of a text.
+ *   word    the word, a string
+ *   text    the first character of the piece; no terminating zero is needed
+ *   length  the number of characters of the piece
+ * Returns TRUE when the piece has the length and the characters of word.
+ */
+static Boolean word_matches(const char *word, const char *text, size_t length)
+{
+    return (strlen(word) == length && strncmp(word, text, length) == 0)
+               ? TRUE
+               : FALSE;
+}
+
 /* Looks up an operation by its name; see instruction_table.h. */
 const Instruction *instruction_find(const char *name)
+{
+    return instruction_find_text(name, strlen(name));
+}
+
+/* Looks up an operation by a piece of text; see instruction_table.h. */
+const Instruction *instruction_find_text(const char *text, size_t length)
 {
     size_t index;
 
     for (index = 0; index < ARRAY_LENGTH(instruction_table); index++)
     {
-        if (strcmp(instruction_table[index].name, name) == 0)
+        if (word_matches(instruction_table[index].name, text, length))
         {
             return &instruction_table[index];
         }
@@ -119,16 +139,7 @@ Boolean instruction_allows_destination(const Instruction *instruction,
 /* Looks up a register by its name; see instruction_table.h. */
 int register_number(const char *name)
 {
-    int number;
-
-    for (number = 0; number < REGISTER_COUNT; number++)
-    {
-        if (strcmp(register_names[number], name) == 0)
-        {
-            return number;
-        }
-    }
-    return NOT_A_REGISTER;
+    return register_number_text(name, strlen(name));
 }
 
 /* Looks up a register by a piece of text; see instruction_table.h. */
@@ -138,8 +149,7 @@ int register_number_text(const char *text, size_t length)
 
     for (number = 0; number < REGISTER_COUNT; number++)
     {
-        if (strlen(register_names[number]) == length &&
-            strncmp(register_names[number], text, length) == 0)
+        if (word_matches(register_names[number], text, length))
         {
             return number;
         }
@@ -150,11 +160,17 @@ int register_number_text(const char *text, size_t length)
 /* Looks up a directive by its name with the dot; see instruction_table.h. */
 DirectiveKind directive_find(const char *name)
 {
+    return directive_find_text(name, strlen(name));
+}
+
+/* Looks up a directive by a piece of text; see instruction_table.h. */
+DirectiveKind directive_find_text(const char *text, size_t length)
+{
     size_t index;
 
     for (index = 0; index < ARRAY_LENGTH(directive_table); index++)
     {
-        if (strcmp(directive_table[index].name, name) == 0)
+        if (word_matches(directive_table[index].name, text, length))
         {
             return directive_table[index].kind;
         }

@@ -39,6 +39,15 @@ typedef enum
 const Instruction *instruction_find(const char *name);
 
 /*
+ * Looks up an operation by a name that is given as a piece of a longer
+ * text. The comparison is case-sensitive.
+ *   text    the first character of the name; no terminating zero is needed
+ *   length  the number of characters of the name
+ * Returns the row of the operation, or NULL when there is no such operation.
+ */
+const Instruction *instruction_find_text(const char *text, size_t length);
+
+/*
  * Returns the opcode of an operation, 0 to 15 (INS-1).
  *   instruction  a row returned by instruction_find
  */
@@ -93,6 +102,15 @@ int register_number_text(const char *text, size_t length);
  * Returns the directive, or DIRECTIVE_NONE when the name is not a directive.
  */
 DirectiveKind directive_find(const char *name);
+
+/*
+ * Looks up a directive by a name that is given as a piece of a longer text.
+ *   text    the first character of the name, its leading dot; no
+ *           terminating zero is needed
+ *   length  the number of characters of the name, the dot included
+ * Returns the directive, or DIRECTIVE_NONE when the name is not a directive.
+ */
+DirectiveKind directive_find_text(const char *text, size_t length);
 
 /*
  * The one test for a reserved word (LBL-20): an operation name, a directive

@@ -9,9 +9,17 @@
 #include <stdlib.h>
 #include <string.h>
 
-/* The first size of a line buffer; it doubles whenever it is full. */
+/* The factor by which an array grows when it is full. */
+#define ARRAY_GROWTH_FACTOR 2
+
+/* The largest value of a size_t, the limit of every size in bytes. */
+#define MAX_SIZE ((size_t)-1)
+
+/* The first size of a line buffer, in characters. */
 #define LINE_BUFFER_INITIAL_SIZE 128
-#define LINE_BUFFER_GROWTH_FACTOR 2
+
+/* What a line buffer must hold beyond a new character: the final zero. */
+#define TERMINATOR_LENGTH 1
 
 /* The character that precedes the newline of a CR LF line ending (SYN-25). */
 #define CARRIAGE_RETURN '\r'
@@ -83,6 +91,58 @@ char *util_make_file_name(const char *base, const char *extension)
 }
 
 /*
+ * Chooses the size to which an array that is too small grows: its first
+ * size, then doubled until it is large enough.
+ *   capacity          the number of elements allocated now
+ *   needed            the number of elements that must fit
+ *   initial_capacity  the first size of the array in elements
+ *   element_size      the size of one element in bytes
+ * Returns the new number of elements, or 0 when that number of elements
+ * would take more bytes than a size_t can hold.
+ */
+static size_t grown_capacity(size_t capacity, size_t needed,
+                             size_t initial_capacity, size_t element_size)
+{
+    /* The largest number of elements whose size in bytes fits a size_t. */
+    size_t limit = MAX_SIZE / element_size;
+    size_t grown = (capacity == 0) ? initial_capacity : capacity;
+
+    while (grown < needed)
+    {
+        if (grown > limit / ARRAY_GROWTH_FACTOR)
+        {
+            return 0;
+        }
+        grown *= ARRAY_GROWTH_FACTOR;
+    }
+    return (grown <= limit) ? grown : 0;
+}
+
+/* Makes sure that a heap array has room; see util.h. */
+void *util_reserve(void *array, size_t *capacity, size_t needed,
+                   size_t initial_capacity, size_t element_size)
+{
+    size_t grown;
+    void *larger;
+
+    if (needed <= *capacity)
+    {
+        return array;
+    }
+    grown = grown_capacity(*capacity, needed, initial_capacity, element_size);
+    if (grown == 0)
+    {
+        return NULL;
+    }
+    larger = realloc(array, grown * element_size);
+    if (larger != NULL)
+    {
+        *capacity = grown;
+    }
+    return larger;
+}
+
+/*
  * Makes sure that a line buffer has room for one more character and the
  * terminating zero.
  *   buffer    the address of the buffer pointer
@@ -94,22 +154,16 @@ char *util_make_file_name(const char *base, const char *extension)
 static Boolean reserve_character(char **buffer, size_t *capacity,
                                  size_t length)
 {
-    size_t new_capacity;
-    char *larger;
+    char *larger = (char *)util_reserve(*buffer, capacity,
+                                        length + 1 + TERMINATOR_LENGTH,
+                                        LINE_BUFFER_INITIAL_SIZE,
+                                        sizeof(char));
 
-    if (length + 1 < *capacity)
-    {
-        return TRUE;
-    }
-    new_capacity = (*capacity == 0) ? LINE_BUFFER_INITIAL_SIZE
-                                    : *capacity * LINE_BUFFER_GROWTH_FACTOR;
-    larger = (char *)realloc(*buffer, new_capacity);
     if (larger == NULL)
     {
         return FALSE;
     }
     *buffer = larger;
-    *capacity = new_capacity;
     return TRUE;
 }
 
