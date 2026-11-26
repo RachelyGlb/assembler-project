@@ -286,6 +286,14 @@ file. No web source and no other solution was used.
   The sources are silent on line endings. For a CR LF source without macros
   the `.am` file differs from the `.as` file by the removed carriage
   returns; this too is a deliberate deviation from the letter of MAC-14.
+- **SYN-26** A source line that contains a NUL byte (value 0) is an error
+  (ERR-46), reported by the pre-assembler on that line. The length of a line
+  for SYN-2 is the number of bytes up to its line terminator, NUL bytes
+  included, so a NUL byte cannot hide the rest of a line from the length
+  check or from the `.am` file. A line that is both too long and contains a
+  NUL byte gets one message (ERR-R16), the line-length one. [project decision, 2026-11-26, pending the owner's confirmation]
+  The sources are silent: they describe the input as text. Found by the
+  independent correctness review of 2026-11-26 (finding D-1).
 
 ### 2.6 Directives (DIR)
 
@@ -1196,6 +1204,15 @@ Owner decisions on macros and the pre-assembler
   decision, 2026-11-26] (Q-33). The sources say only "report an error if the
   file does not open" [forum: Input File Name, 22/06/2025]; continuing
   matches CLI-3 and MAC-11.
+- **CLI-12** A source file that opens but cannot be read (the name refers to
+  a directory, or a read fails part of the way through) is treated like a
+  file that cannot be opened: one message without a line number in the form
+  of ERR-R13 (ERR-47), no `.am`, `.ob`, `.ent` or `.ext` file is left for
+  it, the assembler continues with the next argument and the exit status is
+  1. The same holds if reading the `.am` file back in a pass fails. A read
+  error is never taken for the end of the file. [project decision, 2026-11-26, pending the owner's confirmation]
+  Follows the intent of CLI-6 and CLI-11. Found by the independent
+  correctness review of 2026-11-26 (finding D-2).
 - **OUT-1** Output file names are the input name as given on the command line
   plus a suffix: `.am` (after macro expansion), `.ob` (object), `.ent`
   (entries), `.ext` (externals). [booklet p.39, p.46]
@@ -1862,6 +1879,8 @@ ERR-17. A label that has the name of a macro is ERR-14, in the first pass.
 | ERR-43 | A `;` that is not the first character of the line (comment after leading whitespace or after a statement); it is reported as whatever syntax error the text produces. | First pass | SYN-9 [forum: Line with More Than 80 Characters: Does the Assembler Ignore the Line and Continue or Stop?, 14/07/2025] |
 | ERR-44 | A `.mat` dimension that is 0, negative, or written with a sign (`+2`, `-2`). | First pass | DIR-33 [owner decision, 2026-11-26]; the sources are silent |
 | ERR-45 | A label definition with nothing after the colon. | First pass | LBL-22 [owner decision, 2026-11-26], implied by [booklet p.25, p.28, p.35] |
+| ERR-46 | A source line contains a NUL byte. | Pre-assembler | SYN-26 [project decision, 2026-11-26, pending the owner's confirmation] |
+| ERR-47 | A source file opens but cannot be read (a directory, or a read error). Reported without a line number. | Driver and any stage that reads | CLI-12 [project decision, 2026-11-26, pending the owner's confirmation] |
 | ERR-53 | A symbol declared `.extern` is also defined as a label in the same file, in either order. Reported once, on whichever of the two lines comes second: on the label definition line if the `.extern` line came first (then it is ERR-53, not ERR-15), and on the `.extern` line if the label definition came first. | First pass, for both orders | DIR-30 [forum: Translation Unit and Second Pass Errors, 02/07/2025]; [booklet p.35 steps 6, 11]; stage and line DIR-36 [owner decision, 2026-11-26] |
 
 Rules that apply to all first-pass errors:
@@ -1976,6 +1995,20 @@ each item says how.
   line, which may then not be the overflow). Until decided: a test for
   ERR-41 has no other erroneous line at or before the line that crosses the
   limit.
+- **Q-38 A `mcro` with no `mcroend` before the end of the file.** The
+  booklet lets the assembler assume that every definition is closed (MAC
+  rules), so nothing requires a check. Today the unfinished body is swallowed
+  silently and the rest of the file assembles. Options: report an error on
+  the `mcro` line at the end of the file; or keep the assumption. Until
+  decided: no test leaves a definition open.
+- **Q-39 A reserved word, an ill-formed name or an over-long name used as an
+  operand, and a macro name used as the operand of `.extern`.** No ERR-n
+  names these. Today each is a first-pass error on that line. The
+  alternative is an "undefined symbol" error in the second pass (ERR-50).
+  Until decided: tests assert only that the line gets exactly one error.
+- **Q-40 Confirmation of SYN-26 and CLI-12.** Both were decided by the
+  project after the review found the gaps; the owner has not yet confirmed
+  them.
 
 ### 6.2 Resolved
 
