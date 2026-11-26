@@ -1,0 +1,7 @@
+        .extern late
+MAIN:   inc r1
+        inc r2
+        .extern mac
+        inc r3
+        dec UNDEF
+        stop

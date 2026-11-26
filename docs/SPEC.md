@@ -1003,6 +1003,276 @@ Owner decisions on macros and the pre-assembler
     are not in ascending order of `.as` line number (ERR-R17). [project
     decision, 2026-11-27: the owner decided the error and its line, not
     its place among the messages]
+- **MAC-40** A `mcro` line, a `mcroend` line or a macro call that is longer
+  than 80 characters (ERR-10) or contains a NUL byte (ERR-46) gets that one
+  message (ERR-R16) and keeps its effect on the macro state, exactly as a
+  line with a label in front does (MAC-37). No second message is printed
+  for anything else on that line. The kind of the line is taken from its
+  fields as usual; for a line with a NUL byte the fields are those of the
+  text in front of the first NUL byte.
+  - A `mcro` line still opens a definition, and the following lines up to
+    and including the matching `mcroend` line are swallowed. If the rest of
+    the line is a correct `mcro` line, the macro is entered into the macro
+    table with that body, so a later call of it is recognised and a later
+    second definition is ERR-8. If the line is faulty as well (MAC-38), the
+    rule of MAC-38 applies: the body is discarded without messages and the
+    macro is not entered.
+  - A `mcroend` line still closes the open definition; the lines that
+    follow are ordinary lines again.
+  - A macro call is not expanded: no body line is copied for it.
+
+  A body line of a definition that is being recorded is checked for its
+  length and for NUL bytes and reported (ERR-10, ERR-46); it remains a body
+  line. A line discarded after a faulty `mcro` line is not checked
+  (MAC-38). [owner decision, 2026-11-27] (Q-35): the behaviour of the code
+  at that date is the rule. The sources are silent. None of this can be
+  seen in an `.am` file, because none is written; it decides which later
+  lines produce messages.
+- **MAC-41** A line whose first field is `mcroend` while no definition is
+  open is not a pre-assembler error, with or without text after the word.
+  It is an ordinary line: it is copied to the `.am` file unchanged, and the
+  first pass rejects it as an unknown operation (ERR-17), because `mcroend`
+  is not an operation name. ERR-4 does not apply to it. The labelled form
+  `L: mcroend` is different: MAC-36 recognises it outside a definition as
+  well, so it is a pre-assembler error (ERR-9) whether or not a definition
+  is open; with none open there is nothing to close. [owner decision,
+  2026-11-27] (Q-36): the behaviour of the code at that date is the rule.
+  The sources are silent; MAC-7 covers only the opposite case.
+
+### 2.10 Two-pass algorithm (ALG)
+
+- **ALG-1** The first pass identifies the symbols and gives each a numeric
+  value (its memory address). The second pass builds the machine code using
+  the symbol values, the opcodes and the register numbers. [booklet p.31,
+  p.32-33]
+- **ALG-2** Code is built to be loaded starting at address 100 (decimal). The
+  initial value of IC is 100. [booklet p.31, p.33, p.38, p.42] p.35 says
+  "starting at address 0" and "IC ← 0"; the forum rules that the first load
+  address is 100. [forum: First Address for Loading into Memory, 08/06/2025]
+- **ALG-3** IC is advanced, after each instruction line, by the number of
+  words the instruction takes, so it always points at the next free cell.
+  [booklet p.33]
+- **ALG-4** The assembler keeps two images: the instruction (code) image and
+  the data image, each indexed by its own counter, IC and DC. Both counters
+  get their initial value when the assembler starts on a source file.
+  [booklet p.39]
+- **ALG-5** In the output machine code the instructions and the data are two
+  separate segments: all instruction words first, then all data words. The
+  input file need not keep them separate. [booklet p.34, p.41, p.42]
+- **ALG-6** At the end of the first pass, the value of every symbol with the
+  attribute "data" is increased by ICF, the final value of IC (equivalently:
+  by the total length of the code plus the load address 100), because the data
+  image is placed right after the code image. [booklet p.36 step 19, p.41,
+  p.42]
+- **ALG-7** In the first pass it is always possible to build: the complete
+  first word of every instruction, the additional word of an immediate operand
+  or a register operand, and the encoding of all data (`.data`, `.string`,
+  `.mat`). Words that depend on a symbol are completed in the second pass.
+  [booklet p.33, p.36]
+- **ALG-8** Both passes read the (expanded) source file from its beginning.
+  [booklet p.35]
+- **ALG-9** First pass, skeleton algorithm (not mandatory) [booklet p.35-36]:
+  1. Initialise IC and DC (the booklet writes `DC ← 0, IC ← 0`; ALG-2 fixes
+     IC at 100).
+  2. Read the next line. At end of file go to 17.
+  3. If the first field is a symbol continue, otherwise go to 5.
+  4. Turn on the "symbol definition" flag.
+  5. If the line is a data-storage directive (`.data`, `.string` or `.mat`)
+     continue, otherwise go to 8.
+  6. If there is a symbol definition, enter it into the symbol table with the
+     attribute "data" and the value DC. If the symbol is already in the table,
+     report an error.
+  7. Identify the kind of data, encode it into the data image, and advance DC
+     by its length. Go to 2.
+  8. If the line is `.extern` or `.entry` continue, otherwise go to 11.
+  9. If it is `.entry`, go to 2 (it is handled in the second pass).
+  10. If it is `.extern`, enter the symbol that appears as its operand into
+      the symbol table with the value 0 and the attribute "external". Go to 2.
+  11. The line is an instruction. If there is a symbol definition, enter it
+      into the symbol table with the attribute "code" and the value IC. If the
+      symbol is already in the table, report an error.
+  12. Look up the operation name in the operation table. If it is not found,
+      report an error in the instruction name.
+  13. Analyse the operands and compute L, the total number of words the
+      instruction takes.
+  14. Build the binary code of the first word and of every additional word
+      that encodes an immediate operand.
+  15. Save the values of IC and L together with the machine code of the
+      instruction.
+  16. `IC ← IC + L`, go to 2.
+  17. The file has been read completely. If errors were found in the first
+      pass, stop here.
+  18. Save the final values of IC and DC as ICF and DCF. They are used to
+      build the output files after the second pass.
+  19. Add ICF to the value of every symbol with the attribute "data".
+  20. Start the second pass.
+- **ALG-10** Second pass, skeleton algorithm (not mandatory) [booklet p.36]:
+  1. Read the next line. At end of file go to 7.
+  2. If the first field is a symbol (label), skip it.
+  3. If the line is `.data`, `.string`, `.mat` or `.extern`, go to 1.
+  4. If the line is `.entry` continue, otherwise go to 6.
+  5. Add the attribute "entry" to the symbol that appears as the operand of
+     the directive. If the symbol is not in the symbol table, report an error.
+     Go to 1.
+  6. Complete the binary encoding of the operand words, according to the
+     addressing modes. For every operand that contains a symbol, find the
+     symbol's value in the symbol table; if it is not there, report an error.
+     If the symbol has the attribute "external", add the address of the
+     relevant word to the list of words that refer to an external symbol. The
+     values of IC and L saved in the first pass may be used. Go to 1.
+  7. The file has been read completely. If errors were found in the second
+     pass, stop here.
+  8. Build the output files.
+- **ALG-11** The assembler processes a line by its type: it ignores empty and
+  comment lines; for an instruction it finds the operation and the addressing
+  modes, reserves the additional words and advances IC; for a directive it
+  acts according to the directive. [booklet p.40-41]
+- **ALG-12** The length of the input program is not known in advance. A
+  maximum size may be assumed **only** for the arrays that hold the
+  machine-code image. Every other structure (symbol table, macro table) must
+  be implemented efficiently and economically, for example with a linked list
+  and dynamic allocation. [booklet p.46] No maximum number of lines in an
+  input file may be assumed. [forum: Input File Line Limit, 14/07/2025]
+- **ALG-13** The skeleton algorithms are not mandatory; what is mandatory is
+  the required output. In particular, all encoding may be done in the second
+  pass. [forum: Two Passes, 30/06/2025; Is it Possible to Encode Only in the
+  Second Pass?, 14/07/2025]
+- **ALG-14** The data image starts immediately after the last instruction
+  word, with no gap. [forum: Data section starting address, 22/07/2025]
+- **ALG-15** Memory overflow must be checked: the program (code plus data) may
+  not go beyond the 256 memory cells. An overflow is an error; it is reported
+  and the assembler goes on looking for further errors. IC and DC
+  are what the check uses. [forum: Memory overflow, 14/07/2025; Memory size,
+  17/07/2025; Questions Regarding the First Pass, 22/06/2025] [inferred] With
+  the load address 100 (ALG-2) and addresses 0..255 (M-4), the limit is
+  code words + data words ≤ 156, that is the last used address ≤ 255. The
+  line on which the error is reported is fixed by ALG-17.
+- **ALG-16** The instructions are only encoded, never executed. No rule
+  requires any particular instruction (for example `stop`) to be present in a
+  program. [forum: Jumping to a Label, 17/06/2025; Must the stop command
+  appear at least once?, 22/07/2025]
+- **ALG-17** Memory overflow (ERR-41) is reported by the first pass, once
+  per file, on the line whose words first make the code length plus the
+  data length exceed the available memory, that is the first instruction or
+  data line after which the running total of code words and data words is
+  greater than 156. The first pass keeps scanning the remaining lines for
+  other errors, but the overflow is not reported again for that file,
+  however many further lines add words. The line number is that of ERR-R12,
+  like every other first-pass message. [owner decision, 2026-11-26]
+  (Q-30 a). The report and the continued scan are required by [forum:
+  Memory overflow, 14/07/2025]; the sources do not say on which line, or how
+  often, the error is reported. Which lines count is fixed by ALG-18.
+- **ALG-18** A line on which the first pass reports an error adds no words
+  to the running total of ALG-17, neither code words nor data words,
+  whatever the error is (a syntax error, a label error such as ERR-11 to
+  ERR-15 or ERR-53, a value out of range) and however many words the line
+  would have had without it. Consequently a line never gets both another
+  error and the memory overflow error (ERR-R16 is kept without a choice
+  between the two), and ERR-41 is reported on the first error-free line
+  whose words bring the total of the words of the error-free lines above
+  156. A file in which only erroneous lines would have crossed the limit
+  does not report ERR-41. A line that has only the warning WRN-1 is not an
+  erroneous line; it adds no words in any case. [owner decision, 2026-11-27]
+  (Q-37): the behaviour of the code at that date is the rule. The sources
+  are silent.
+
+### 2.11 Errors (ERR-R)
+
+- **ERR-R1** The assembler must detect and report syntax errors of the source
+  program, such as: an operation that does not exist, a wrong number of
+  operands, an operand type that does not fit the operation, a register name
+  that does not exist, "and other errors". It also verifies that each symbol
+  is defined exactly once. [booklet p.34]
+- **ERR-R2** Error messages are printed to standard output (`stdout`).
+  [booklet p.34]
+- **ERR-R3** Every error message must state the number of the line in the
+  source file in which the error was found. Line numbering starts at 1.
+  [booklet p.34] The number may be the line number in the original `.as` file
+  or the line number in the expanded `.am` file; both are accepted.
+  [forum: Printing Errors with Line Number in Case of Syntax Error in File,
+  02/07/2025] This project always reports the `.as` line (ERR-R12, section
+  2.14).
+- **ERR-R4** The assembler does not stop after the first error. It continues
+  over the input to find further errors, if any. It must detect and report all
+  erroneous lines of the input. [booklet p.34, p.46]
+- **ERR-R5** Messages should be as detailed as possible, so that one can
+  understand what each error is and where it is. [booklet p.46]
+- **ERR-R6** If the input file has errors, the output files `.ob`, `.ent` and
+  `.ext` are not produced for it. [booklet p.34, p.46]
+- **ERR-R7** If errors were found in the first pass, the second pass is not
+  run. [booklet p.36 step 17]
+- **ERR-R8** The booklet does not require the file name in an error message.
+  It requires only the line number (ERR-R3) and enough detail to locate the
+  error (ERR-R5). [inferred] Since several files can be processed in one run
+  (CLI-1), printing the file name is the natural way to satisfy "where each
+  error is", but it is not a stated rule of the sources. This project prints
+  it (ERR-R13).
+- **ERR-R9** One error message per input line is sufficient; every line of
+  the file must still be examined. [forum: Error reporting, 22/07/2025] The
+  booklet is silent and compatible (p.34, p.46). This project prints exactly
+  one (ERR-R16).
+- **ERR-R10** On a memory allocation failure the assembler reports an error,
+  releases all allocated memory, and the entire program exits (it does not
+  move on to the next file). [forum: Linked List for Macros, 17/06/2025;
+  Memory Allocation Errors, 14/07/2025; Memory allocation error, 22/07/2025]
+  The booklet is silent.
+- **ERR-R11** Every file opened while processing a source file is closed when
+  the processing of that file ends. [forum: A Few Questions That Came Up,
+  22/07/2025]
+- **ERR-R12** The line number in every message, from every stage, is the
+  number of the line in the original `.as` file, counted from 1. The first
+  and second pass obtain it from the line map of MAC-35. For a line that
+  comes from a macro body, the number reported is that of the body line
+  inside the macro definition, which is the place the author has to fix. A
+  macro that is called N times can therefore produce the same message, with
+  the same line number, N times; this repetition is accepted. [owner
+  decision, 2026-11-26] (choice C-1), allowed by [forum: Printing Errors with
+  Line Number in Case of Syntax Error in File, 02/07/2025]; the repetition is
+  accepted by [booklet p.34] (MAC-13).
+- **ERR-R13** Message format. Every error is one line on `stdout` of the form
+  `<name>.as:<line>: error: <text>`, where `<name>` is the command-line
+  argument exactly as given (CLI-8) and `<line>` is the decimal line number
+  of ERR-R12 with no padding. There is no space before the line number, and
+  exactly one space after the colon that follows the line number and after
+  the colon that follows `error`. An error that has no line (for example a
+  file that cannot be opened) has the form `<name>.as: error: <text>`. The
+  `<text>` strings are not fixed by this file; they must be informative
+  (ERR-R5), contain no newline, and may change without a change to SPEC.
+  Tests compare the file name, the line number and the severity of each
+  message, never its wording. [owner decision, 2026-11-26] (Q-3). The
+  sources fix only `stdout` and the line number [booklet p.34] and give no
+  format.
+- **ERR-R14** A warning has the same format as an error with the word
+  `warning:` in place of `error:`. A warning is not an error: it does not
+  suppress the output files and does not change the exit status (CLI-9).
+  [owner decision, 2026-11-26] (Q-3). The assembler prints exactly one kind
+  of warning, WRN-1 (DIR-35, section 5.6).
+- **ERR-R15** `stdout` carries only diagnostics. Nothing is printed for a
+  file that assembles without errors and without warnings: no success
+  notice, no progress text, no file name. Every line the assembler writes
+  to `stdout` is an error line (ERR-R13), a warning line (ERR-R14) or the
+  usage line of CLI-10. [owner decision, 2026-11-26] (Q-26). The sources
+  are silent on what is printed when there is no error.
+- **ERR-R16** Exactly one message is printed for a line that has one or more
+  errors: the first error found on that line. Once an error has been found
+  the rest of the line is not examined further. Which of several errors is
+  "the first found" is not fixed by this file (the wording of messages is
+  free, ERR-R13); what is fixed is that the line yields one message. "Line"
+  means a line as a stage reads it: a line of the `.as` file for the
+  pre-assembler, a line of the `.am` file for the passes, so a macro body
+  line with an error still yields one message per call (ERR-R12). The rule
+  holds for each stage separately. Within the first pass a warning and an
+  error never appear on the same line: if a line that would get the warning
+  WRN-1 has a first-pass error, only the error is printed (DIR-35).
+  [owner decision, 2026-11-26] (Q-29), the minimum allowed by "one error
+  per line is sufficient" [forum: Error reporting, 22/07/2025]. Across
+  stages one case of two messages for the same line exists: `L: .entry X`
+  gets the warning WRN-1 in the first pass, and if `X` is undefined (ERR-51)
+  or declared `.extern` (ERR-52) the second pass prints its error for the
+  same line as well. Both are printed; the warning is not held back.
+  [owner decision, 2026-11-27] (Q-34). No line gets two errors: an error
+  in the pre-assembler or in the first pass keeps the later stages from
+  running (MAC-23, ERR-R7).
 - **ERR-R17** Order of the messages on `stdout`. Files are reported in
   command-line order; the message for a file that cannot be opened (ERR-1)
   stands at the place of that file. Within a file the messages are either

@@ -164,6 +164,8 @@ into the subdirectory.
   | `errors/cr_inside_string` | CR LF line endings and a CR inside a string. |
   | `errors/string_illegal_char` | Control and non-ASCII bytes inside strings. |
   | `errors/nul_byte` | NUL bytes (0x00) inside seven lines; one of them is a comment line of 82 bytes. Not a text file: recreate it with `printf` only. |
+  | `errors/macro_unclosed_no_newline` | The last line is `mcro m1` with no newline after it. |
+  | `errors/line_too_long_mcro`, `errors/line_too_long_mcroend`, `errors/line_too_long_macro_call` | One line each is made longer than 80 characters by 80 trailing spaces. |
 
 - A line holds at most one error, except in the three `one_message_per_line*`
   cases and in the cases about faulty `mcro` lines, which exist to check
@@ -182,40 +184,56 @@ into the subdirectory.
   ERR-R17: for the passes, expand the macros first and then walk the `.am`
   lines.
 - After a faulty `mcro` line the cases still close the definition with
-  `mcroend` (MAC-7) and expect no further message for the body lines or for
-  the `mcroend` line (MAC-38).
-- A test for ERR-41 has no other erroneous line at or before the line that
-  crosses the limit (Q-37). ERR-41 is reported once per file (ALG-17), so
-  each `.mat` line with huge dimensions has a case of its own.
-- A line whose operand is a reserved word, an ill-formed name or an
-  over-long name is the only erroneous line of its case, because the stage
-  that reports it is undecided (Q-39) and the stage decides which other
-  messages a run prints.
+  `mcroend` and expect no further message for the body lines or for the
+  `mcroend` line (MAC-38). The `macro_unclosed*` cases are the exception:
+  they leave a definition open on purpose (MAC-39), and since everything
+  after the open `mcro` line is a body line, a file can hold only one such
+  definition, as its last one.
+- A pre-assembler case has no `.am` file. That absence is the check that no
+  `.am` is left (MAC-23), also for a definition that is not closed (MAC-39).
+- ERR-41 is reported once per file (ALG-17), so each `.mat` line with huge
+  dimensions has a case of its own. A line with another first-pass error
+  adds no words (ALG-18); `errors/memory_overflow_with_other_error` counts
+  its words on that basis.
+- A reserved word, an ill-formed name or an over-long name as an operand is
+  a first-pass error (LBL-24). The three older `errors/operand_*` cases hold
+  no other erroneous line; `errors/operand_not_label_first_pass`,
+  `errors/entry_extern_operand_not_label` and `errors/extern_macro_name`
+  add a line with an undefined symbol, which must stay unreported because
+  the second pass does not run (ERR-R7). That is how the stage is observed.
+- A line is made longer than 80 characters with trailing spaces when it must
+  stay an otherwise correct `mcro` line, `mcroend` line or macro call
+  (MAC-19, MAC-40).
 
-## Not tested (undecided in SPEC 6.1, or not observable)
+## Not tested (undefined in SPEC, or not observable)
 
-The suite stays away from the inputs of the open questions, exactly as
-SPEC 6.1 instructs.
+SPEC 6.1 has no open question left: Q-34 to Q-40 were decided on 2026-11-27
+and each of them has cases now.
 
-| Input or behaviour | Open question | What the suite does |
+| Decision | Rules | Cases |
 |---|---|---|
-| A label in front of a `.entry` line whose operand is undefined (ERR-51) or external (ERR-52): warning and second-pass error on one line | Q-34 | No case has a label in front of such a `.entry` line. Labels in front of `.entry` always name a defined, internal symbol. |
-| A `mcro` line, a `mcroend` line or a macro call that is longer than 80 characters | Q-35 | Over-long lines are ordinary lines, comment lines or macro body lines only. |
-| A `mcroend` line while no definition is open, plain or as `L: mcroend` | Q-36 | Every `mcroend` line closes an open definition. |
-| Memory overflow together with another error at or before the line that crosses the limit | Q-37 | In the ERR-41 cases the first other erroneous line comes after the line that crosses the limit. |
-| A `mcro` with no `mcroend` before the end of the file | Q-38 | No case leaves a definition open. |
-| A reserved word, an ill-formed name or an over-long name as an operand; a macro name as the operand of `.extern` | Q-39 | The three `errors/operand_*` cases assert only that the line gets exactly one error, and hold no other erroneous line. No case gives a macro name to `.extern`. |
-| A NUL byte together with a `mcro` line, a `mcroend` line, a macro call, or a line discarded after a faulty `mcro` line | Q-35 and MAC-38 by analogy | In `errors/nul_byte` the NUL bytes stand in ordinary lines, comment lines and one body line of a correct definition. |
+| Q-34 | DIR-35, ERR-R16, ERR-R17 | `errors/warning_and_second_pass_error` |
+| Q-35 | MAC-40 | `errors/line_too_long_mcro`, `errors/line_too_long_mcroend`, `errors/line_too_long_macro_call` |
+| Q-36 | MAC-41 | `errors/mcroend_without_definition` |
+| Q-37 | ALG-18 | `errors/memory_overflow_with_other_error` |
+| Q-38 | MAC-39, ERR-48 | the five `errors/macro_unclosed*` cases |
+| Q-39 | LBL-24, ERR-49, ERR-34, ERR-14 | the three older `errors/operand_*` cases, `errors/operand_not_label_first_pass`, `errors/entry_extern_operand_not_label`, `errors/extern_macro_name` |
+| Q-40 | SYN-26, CLI-12 | `errors/nul_byte`, `cli/source_is_directory`, `cli/source_is_directory_stale` (the rules were confirmed as written) |
 
-Also outside the suite: the inputs that SPEC declares undefined (nested macro
-definitions, a missing `mcroend`, a macro used before its definition, text
-before `mcroend`; MAC-6, MAC-7, MAC-8, MAC-20) and allocation failure
+Decided but without a case of its own: a NUL byte on a `mcro` line, a
+`mcroend` line or a macro call (MAC-40 treats it like an over-long line; the
+three `line_too_long_m*` cases stand for both), and an unclosed definition
+whose `mcro` line was reported for a label in front of it, for its length or
+for a NUL byte (MAC-39; `errors/macro_unclosed_faulty_mcro` stands for all
+kinds of `mcro` line that already have a message).
+
+Outside the suite: the inputs that SPEC declares undefined (nested macro
+definitions, a macro used before its definition, text before `mcroend`;
+MAC-6, MAC-8, MAC-20) and allocation failure
 (ERR-R10), which the runner cannot provoke (it would need a memory limit
 around the binary, and the point of failure depends on the platform). A read
 error in the middle of a file (the second half of CLI-12) cannot be produced
-portably either; the directory cases stand for it. SYN-26 and CLI-12 are
-project decisions that still wait for the owner's confirmation (Q-40); their
-cases assert the rules as written.
+portably either; the directory cases stand for it.
 
 Rules whose effect cannot be seen from outside, and what is checked instead:
 
@@ -236,22 +254,22 @@ Rules whose effect cannot be seen from outside, and what is checked instead:
 | ERR | Cases |
 |---|---|
 | ERR-1 | `cli/missing_file_last`, `cli/missing_file_only`, `cli/missing_file_first`, `cli/missing_file_middle`, `cli/missing_files_several`, `cli/as_suffix_argument`, `cli/order_several_files`, `cli/stale_files_of_missing_file`, `cli/missing_file_long_name`, `cli/argument_with_directory`, `cli/dash_arguments` |
-| ERR-2 | `errors/macro_name_reserved`, `errors/macro_name_reserved_mcro`, `errors/faulty_mcro_body_is_silent` |
+| ERR-2 | `errors/macro_name_reserved`, `errors/macro_name_reserved_mcro`, `errors/faulty_mcro_body_is_silent`, `errors/macro_unclosed_faulty_mcro` |
 | ERR-3 | `errors/macro_def_extra_text`, `errors/preassembler_error_hides_pass_errors`, `errors/faulty_mcro_body_is_silent`, `errors/faulty_mcro_name_is_not_a_macro` |
 | ERR-4 | `errors/macro_end_extra_text`, `errors/one_message_per_line_preassembler` |
 | ERR-5 | `errors/macro_name_missing`, `errors/faulty_mcro_body_is_silent` |
 | ERR-6 | `errors/macro_name_invalid`, `errors/macro_name_too_long`, `errors/faulty_mcro_body_is_silent` |
-| ERR-7 | `errors/macro_call_extra_text`, and as the probe for the state of the macro table in the `label_before_*` and `faulty_mcro_*` cases |
+| ERR-7 | `errors/macro_call_extra_text`, and as the probe for the state of the macro table in the `label_before_*` and `faulty_mcro_*` cases and in `errors/line_too_long_mcro` and `errors/line_too_long_mcroend` |
 | ERR-8 | `errors/macro_duplicate_name`, `errors/faulty_mcro_body_is_silent`, `errors/faulty_mcro_name_is_not_a_macro`, `errors/label_before_mcro` |
 | ERR-9 | `errors/label_before_mcro`, `errors/label_before_mcro_faulty`, `errors/label_before_mcroend`, `errors/label_before_macro_call`, `errors/faulty_mcro_name_is_not_a_macro`; not ERR-9: `errors/label_not_attached_macro_lines` |
-| ERR-10 | `errors/line_too_long`, `errors/crlf_line_too_long`, `errors/nul_byte` (a line that is too long and holds a NUL byte) |
+| ERR-10 | `errors/line_too_long`, `errors/crlf_line_too_long`, `errors/nul_byte` (a line that is too long and holds a NUL byte), `errors/line_too_long_mcro`, `errors/line_too_long_mcroend`, `errors/line_too_long_macro_call`, `errors/macro_unclosed_long_body_line` |
 | ERR-11 | `errors/label_invalid_chars` |
 | ERR-12 | `errors/label_too_long` |
 | ERR-13 | `errors/label_reserved_word`, `errors/label_reserved_mcro` |
-| ERR-14 | `errors/label_same_as_macro` |
+| ERR-14 | `errors/label_same_as_macro`, `errors/extern_macro_name` |
 | ERR-15 | `errors/label_duplicate`, `errors/label_on_error_line_is_defined`, `errors/label_on_err38_err45_line_is_defined` |
 | ERR-16 | `errors/label_space_before_colon` |
-| ERR-17 | `errors/unknown_operation`, `errors/macro_nested_call_not_expanded`, `errors/first_pass_error_hides_second_pass`, `errors/line_numbers_after_macro`, `errors/line_numbers_in_macro_body` |
+| ERR-17 | `errors/unknown_operation`, `errors/macro_nested_call_not_expanded`, `errors/first_pass_error_hides_second_pass`, `errors/line_numbers_after_macro`, `errors/line_numbers_in_macro_body`, `errors/mcroend_without_definition`, `errors/memory_overflow_with_other_error` |
 | ERR-18 | `errors/unknown_directive` |
 | ERR-19 | `errors/too_many_operands` |
 | ERR-20 | `errors/label_on_error_line_is_defined`, `errors/too_few_operands`, `errors/line_numbers_after_macro`, `errors/line_numbers_in_macro_body` |
@@ -263,39 +281,40 @@ Rules whose effect cannot be seen from outside, and what is checked instead:
 | ERR-26 | `errors/comma_errors_operands` |
 | ERR-27 | `errors/extra_text_after_instruction` |
 | ERR-28 | `errors/data_no_values` |
-| ERR-29 | `errors/data_value_not_integer` |
+| ERR-29 | `errors/data_value_not_integer`, `errors/memory_overflow_with_other_error` |
 | ERR-30 | `errors/data_comma_errors` |
 | ERR-31 | `errors/string_malformed` |
 | ERR-32 | `errors/string_illegal_char`, `errors/cr_inside_string` |
 | ERR-33 | `errors/mat_dimensions_malformed` |
-| ERR-34 | `errors/entry_extern_operand`, `errors/warning_line_with_error` |
+| ERR-34 | `errors/entry_extern_operand`, `errors/warning_line_with_error`, `errors/entry_extern_operand_not_label` |
 | ERR-35 | `errors/missing_space_after_operation` |
 | ERR-36 | `errors/missing_space_after_directive` |
 | ERR-37 | `errors/matrix_operand_whitespace` |
 | ERR-38 | `errors/label_no_space_after_colon`, `errors/label_on_err38_err45_line_is_defined` |
 | ERR-39 | `errors/immediate_out_of_range`, `errors/data_out_of_range`, `errors/number_wraps_around` |
 | ERR-40 | `errors/mat_too_many_values` |
-| ERR-41 | `errors/memory_overflow`, `errors/memory_overflow_reported_once`, `errors/memory_overflow_data_before_code`, `errors/memory_overflow_code_only`, `errors/memory_overflow_in_macro`, `errors/mat_dimension_huge`, `errors/mat_dimensions_product_huge`, `errors/mat_dimensions_product_wraps_32`, `errors/mat_dimension_wraps_32`, `errors/mat_dimension_wraps_64` |
+| ERR-41 | `errors/memory_overflow`, `errors/memory_overflow_reported_once`, `errors/memory_overflow_data_before_code`, `errors/memory_overflow_code_only`, `errors/memory_overflow_in_macro`, `errors/memory_overflow_with_other_error`, `errors/mat_dimension_huge`, `errors/mat_dimensions_product_huge`, `errors/mat_dimensions_product_wraps_32`, `errors/mat_dimension_wraps_32`, `errors/mat_dimension_wraps_64` |
 | ERR-42 | `errors/matrix_operand_no_label` |
 | ERR-43 | `errors/semicolon_not_first` |
 | ERR-44 | `errors/mat_dimension_invalid` |
 | ERR-45 | `errors/label_alone`, `errors/label_on_err38_err45_line_is_defined` |
 | ERR-46 | `errors/nul_byte` |
 | ERR-47 | `cli/source_is_directory`, `cli/source_is_directory_stale` |
+| ERR-48 | `errors/macro_unclosed`, `errors/macro_unclosed_after_valid`, `errors/macro_unclosed_long_body_line`, `errors/macro_unclosed_no_newline`; not ERR-48: `errors/macro_unclosed_faulty_mcro`, `errors/line_too_long_mcroend` |
+| ERR-49 | `errors/operand_reserved_word`, `errors/operand_ill_formed_name`, `errors/operand_name_too_long`, `errors/operand_not_label_first_pass` |
 | ERR-50 | `errors/undefined_symbol`, `errors/line_numbers_second_pass_macro`, `errors/one_message_per_line_second_pass`, `errors/order_first_pass_before_second_pass`, `errors/warning_label_is_not_defined`, `errors/macro_name_not_first_word`, `errors/order_macro_warning_and_second_pass` |
-| ERR-51 | `errors/entry_undefined`, `errors/line_numbers_second_pass_macro` |
-| ERR-52 | `errors/entry_and_extern` |
+| ERR-51 | `errors/entry_undefined`, `errors/line_numbers_second_pass_macro`, `errors/warning_and_second_pass_error` |
+| ERR-52 | `errors/entry_and_extern`, `errors/warning_and_second_pass_error` |
 | ERR-53 | `errors/extern_then_label`, `errors/label_then_extern`, `errors/extern_label_conflict_data`, `errors/warning_line_with_error` |
-| no ERR ID (Q-39) | `errors/operand_reserved_word`, `errors/operand_ill_formed_name`, `errors/operand_name_too_long` |
-| WRN-1 | `valid/warning_label_before_entry`, `valid/warning_label_before_extern`, `valid/warning_label_not_in_symbol_table`, `valid/warning_in_macro_body`, `errors/warning_label_is_not_defined`, `errors/warning_line_with_error`, `errors/order_first_pass_before_second_pass`, `errors/order_macro_defined_late`, `cli/warnings_only_status_zero`, `cli/missing_file_middle`, `cli/order_several_files` |
+| WRN-1 | `valid/warning_label_before_entry`, `valid/warning_label_before_extern`, `valid/warning_label_not_in_symbol_table`, `valid/warning_in_macro_body`, `errors/warning_label_is_not_defined`, `errors/warning_line_with_error`, `errors/order_first_pass_before_second_pass`, `errors/order_macro_defined_late`, `errors/warning_and_second_pass_error`, `cli/warnings_only_status_zero`, `cli/missing_file_middle`, `cli/order_several_files` |
 
 ### Rules about the output as a whole
 
 | Rule | Cases |
 |---|---|
 | ERR-R15 (nothing but diagnostics on `stdout`) | every case, through the runner; `cli/no_arguments` for the usage line (CLI-10) |
-| ERR-R16 (one message per line) | `errors/one_message_per_line`, `errors/one_message_per_line_preassembler`, `errors/one_message_per_line_second_pass`, `errors/warning_line_with_error`, and the `label_before_*` and `faulty_mcro_*` cases |
-| ERR-R17 (order) | every case, through the runner; specifically `errors/order_first_pass_before_second_pass`, `errors/order_macro_body_called_twice`, `errors/order_macro_defined_late`, `errors/line_numbers_in_macro_body`, `errors/line_numbers_second_pass_macro`, `cli/order_several_files`, `cli/missing_file_middle` |
+| ERR-R16 (one message per line) | `errors/one_message_per_line`, `errors/one_message_per_line_preassembler`, `errors/one_message_per_line_second_pass`, `errors/warning_line_with_error`, `errors/warning_and_second_pass_error` (a warning and a second-pass error on one line are both printed), `errors/macro_unclosed_faulty_mcro`, `errors/memory_overflow_with_other_error`, and the `label_before_*` and `faulty_mcro_*` cases |
+| ERR-R17 (order) | every case, through the runner; specifically `errors/order_first_pass_before_second_pass`, `errors/order_macro_body_called_twice`, `errors/order_macro_defined_late`, `errors/line_numbers_in_macro_body`, `errors/line_numbers_second_pass_macro`, `errors/warning_and_second_pass_error`, `errors/macro_unclosed_long_body_line` (ERR-48 last, with the smaller line number), `cli/order_several_files`, `cli/missing_file_middle` |
 | OUT-14 (stale files) | `valid/stale_ent_ext_removed`, `valid/stale_files_replaced`, `valid/stale_ext_removed_extern_unused`, `errors/stale_files_preassembler_error`, `errors/stale_files_first_pass_error`, `errors/stale_files_second_pass_error`, `cli/stale_files_of_missing_file`, `cli/source_is_directory_stale` |
 | SYN-24, SYN-25, OUT-15 | `valid/last_line_no_newline`, `valid/last_line_cr_no_newline`, `valid/comment_only_no_newline`, `valid/crlf_line_endings`, `valid/cr_inside_line`, `valid/empty_file`, `valid/comments_only`, `errors/crlf_line_too_long`, `errors/cr_inside_string` |
 | CLI-10, CLI-11 | `cli/no_arguments`; `cli/missing_file_first`, `cli/missing_file_middle`, `cli/missing_files_several`, `cli/missing_file_last`; CLI-12: `cli/source_is_directory`, `cli/source_is_directory_stale` |
@@ -478,10 +497,24 @@ Rules whose effect cannot be seen from outside, and what is checked instead:
 | `mat_dimensions_product_wraps_32` | ERR-41, ALG-17 | `.mat [65536][65536]`: the product is 2^32 and must not wrap to 0. |
 | `mat_dimension_wraps_32` | ERR-41, ALG-17 | `.mat [4294967297][1] 5`: the dimension must not wrap to 1. |
 | `mat_dimension_wraps_64` | ERR-41, ALG-17 | `.mat [18446744073709551617][1] 5`: the same for 64 bits. |
-| `operand_reserved_word` | Q-39, ERR-R16 | `jmp mov`: exactly one error on the line (the stage is undecided). |
-| `operand_ill_formed_name` | Q-39, ERR-R16 | `jmp 1abc`: exactly one error on the line. |
-| `operand_name_too_long` | Q-39, ERR-R16 | An operand of 31 letters: exactly one error on the line. |
+| `operand_reserved_word` | LBL-24, ERR-49, ERR-R16 | `jmp mov`: exactly one error on the line. |
+| `operand_ill_formed_name` | LBL-24, ERR-49, ERR-R16 | `jmp 1abc`: exactly one error on the line. |
+| `operand_name_too_long` | LBL-24, ERR-49, ERR-R16 | An operand of 31 letters: exactly one error on the line. |
 | `order_macro_warning_and_second_pass` | ERR-R17, ERR-R12, DIR-35, ERR-50 | A macro body with a warning line and an undefined symbol, called three times between other second-pass errors: all warnings first, then the errors in .am order. |
+| `macro_unclosed` | MAC-39, ERR-48, MAC-23 | A `mcro` with no `mcroend` before the end of the file: one error, on the `mcro` line; no .am. **Fails until MAC-39 is implemented.** |
+| `macro_unclosed_after_valid` | MAC-39, ERR-48, MAC-24 | An unclosed definition after a closed macro, a call and statements: one error on the open `mcro` line; its body lines (a call, a call with extra text) are not examined. **Fails until MAC-39 is implemented.** |
+| `macro_unclosed_faulty_mcro` | MAC-39, MAC-38, ERR-2, ERR-R16 | `mcro mov` that is never closed: exactly its one message, no ERR-48; no .am. |
+| `macro_unclosed_long_body_line` | MAC-39, ERR-48, ERR-10, ERR-R17 | An unclosed definition whose body holds a line of 87 characters: the message of the body line first, then ERR-48 with the smaller number of the `mcro` line. **Fails until MAC-39 is implemented.** |
+| `macro_unclosed_no_newline` | MAC-39, ERR-48, SYN-24 | The file ends with the line `mcro m1` and no newline: the definition is open with an empty body; one error on that line. **Fails until MAC-39 is implemented.** |
+| `warning_and_second_pass_error` | DIR-35, ERR-R16, ERR-R17, WRN-1, ERR-51, ERR-52 | `L: .entry X` with `X` undefined and with `X` external: the line gets a warning from the first pass and an error from the second pass; both warnings come before both errors. |
+| `line_too_long_mcro` | MAC-40, ERR-10, ERR-7 | An over-long `mcro` line: one message; the definition is still opened and the macro defined (a later call with extra text is ERR-7). |
+| `line_too_long_mcroend` | MAC-40, ERR-10, ERR-7, MAC-39 | An over-long `mcroend` line: one message; the definition is still closed (the next line is examined: ERR-7) and there is no ERR-48. |
+| `line_too_long_macro_call` | MAC-40, ERR-10 | An over-long macro call: one message, no .am. |
+| `mcroend_without_definition` | MAC-41, ERR-17, ERR-R12 | `mcroend` and `mcroend junk` while no definition is open: no pre-assembler error; the lines are copied to .am and the first pass reports each once. |
+| `memory_overflow_with_other_error` | ALG-18, ALG-17, ERR-41, ERR-17, ERR-29, ERR-R16 | At 155 words, an unknown operation and a faulty `.data` line of four values add no words and get one message each; the next line fills the memory silently and the one after it reports the overflow. |
+| `operand_not_label_first_pass` | LBL-24, ERR-49, ERR-R7 | A reserved word, a name of 31 letters, an ill-formed name and `r1[r2][r3]` as instruction operands are first-pass errors: the undefined symbol on a later line is not reported. |
+| `extern_macro_name` | LBL-24, ERR-14, LBL-21, ERR-R7 | `.extern` with the name of a macro defined before the line and of one defined after it: first-pass errors on the `.extern` lines; the undefined symbol is not reported. |
+| `entry_extern_operand_not_label` | LBL-24, ERR-34, ERR-R7 | `.entry` and `.extern` with a reserved word (operation, register, directive name) or a name of 31 letters: first-pass errors; the undefined symbol is not reported. |
 
 ### Command line (`tests/cli`)
 
