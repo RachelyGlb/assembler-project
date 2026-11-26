@@ -116,17 +116,11 @@ setup-tests:
 	@mkdir -p $(LOG_DIR)
 	@echo "Test environment ready"
 
-# Run all tests
+# Build the binary, then run the whole test suite against it (see
+# tests/README.md). The target fails if the build fails or if any case fails.
 .PHONY: test
-test: $(TARGET) setup-tests
-	@echo "Running complete test suite..."
-	@if [ -x "./$(TEST_RUNNER)" ]; then \
-		./$(TEST_RUNNER); \
-	else \
-		echo "Error: $(TEST_RUNNER) not found or not executable"; \
-		echo "Please ensure test_runner.sh exists and is executable"; \
-		false; \
-	fi
+test: $(TARGET)
+	ASSEMBLER=./$(TARGET) sh tests/run_tests.sh
 
 # Run tests by category
 .PHONY: test-basic

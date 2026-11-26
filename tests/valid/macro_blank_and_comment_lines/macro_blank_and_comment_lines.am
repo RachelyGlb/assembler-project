@@ -1,0 +1,14 @@
+; a comment before the macro
+
+
+MAIN:   clr r1
+; a comment inside the body
+        inc r1
+
+        dec r2
+; a comment between the calls
+; a comment inside the body
+        inc r1
+
+        dec r2
+        stop

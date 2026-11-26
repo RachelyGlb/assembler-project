@@ -1,0 +1,15 @@
+; line 1
+
+MAIN:   clr r1
+        foo r1
+        inc r1
+        inc r2
+        mov r1
+        dec r1
+        dec r2
+        dec r3
+        inc r1
+        inc r2
+        bar
+        stop
+        clr

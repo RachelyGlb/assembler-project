@@ -1,0 +1,10 @@
+MAIN:   clr r1
+        inc r1
+        foo r1
+        inc r2
+        mov r1
+        dec r1
+        inc r1
+        foo r1
+        inc r2
+        stop

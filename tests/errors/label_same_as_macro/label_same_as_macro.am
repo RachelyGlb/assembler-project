@@ -1,0 +1,7 @@
+late:   inc r1
+MAIN:   clr r1
+        inc r2
+early:  inc r3
+        inc r4
+third:  .data 5
+        stop

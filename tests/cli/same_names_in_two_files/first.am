@@ -1,0 +1,6 @@
+.extern E
+.entry MAIN
+MAIN:   jsr E
+        inc r1
+        stop
+X:      .data 1

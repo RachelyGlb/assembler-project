@@ -1,49 +1,60 @@
-# 🔧 קבצי קומפילציה
+# Build products
 *.o
 *.obj
 *.out
 *.exe
-*.log
 *.d
-*~
+*.gch
+*.pch
+*.su
+*.dSYM/
 
-# ⚙️ קבצי הרצה
-assembler
+# The assembler binary
+/assembler
 assembler.exe
 
-# 📄 קבצי פלט של האסמבלר
-*.am
-*.ext
-*.ent
-*.obj
+# Files the assembler generates when it is run in the repository root.
+# The expected outputs of the test suite live under tests/ and are tracked
+# (see the end of this file).
+/*.am
+/*.ob
+/*.ent
+/*.ext
+!/formal_tester.ob
 
-# 🧪 קבצי בדיקות (אבל שומר על דוגמאות חשובות)
-*.expected
+# Scratch directories of the test runner (tests/run_tests.sh)
+/tests/out/
+
+# Temporary test files in the repository root
+/*.expected
 test_output*
 temp_*
+test_files_temp/
+output_temp/
+scratch/
 
-# 🏗️ תיקיות ביניים
+# Intermediate directories
 build/
 bin/
 obj/
 debug/
 release/
 
-# 📝 קבצי גיבוי זמניים
+# Backup and editor swap files
+*~
 *.bak
 *.tmp
 *.swp
 *.swo
 *.backup
-*~
 
-# 🧠 IDE ועורכים
+# IDEs and editors
 .vscode/
 .idea/
 *.code-workspace
 *.sublime-*
 
-# 💻 קבצי מערכת הפעלה
+# Operating system files
 .DS_Store
 .DS_Store?
 ._*
@@ -53,49 +64,36 @@ ehthumbs.db
 Thumbs.db
 desktop.ini
 
-# 🔒 הגנה מפני קבצים מחוץ לתיקיית הפרויקט
-# (זה מונע הוספה בטעות של קבצים מתיקיות אב)
-
-# 🚫 קבצי Makefile זמניים
+# Temporary Makefile copies
 Makefile_*
 makefile_*
 *.mk.tmp
 
-# 📊 קבצי debugging ו-profiling
-*.gch
-*.pch
+# Debugging and profiling output
 core
 core.*
 vgcore.*
-*.dSYM/
-*.su
-
-# 🔍 קבצי לוגים ודיבוג
 *.log
 *.trace
 debug.txt
 output.txt
 
-# ⚡ קבצי תיקוח זמניים של Git
+# Files left behind by merges and patches
 *.orig
 *.rej
 
-# 🎯 קבצים ספציפיים לפרויקט שלא צריכים להיות ב-Git
-test_files_temp/
-output_temp/
-scratch/
-
-# 📦 ארכיבים (למקרה שנוצרים באופן אוטומטי)
+# Archives
 *.zip
 *.tar
 *.tar.gz
 *.rar
 
-# 🔐 קבצי הגדרות פרטיים (אם יהיו)
+# Private settings and keys
 config.local
 .env
 *.key
 *.pem
+
 # Course materials: not ours to publish
 docs/booklet.pdf
 docs/booklet.txt
@@ -104,3 +102,9 @@ docs/forum.txt
 docs/corrections.pdf
 docs/corrections.txt
 docs/Task_14.pdf
+
+# The test cases are tracked in full, whatever their names or extensions.
+# These lines must stay at the end of the file.
+!/tests/valid/**
+!/tests/errors/**
+!/tests/cli/**
