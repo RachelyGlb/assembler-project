@@ -13,6 +13,10 @@
  * lines after it are read in the right state, but it reports nothing more,
  * is not copied and is not expanded (MAC-37).
  *
+ * A definition that is still open at the end of the file is reported then,
+ * with the number of its "mcro" line, unless that line already has a
+ * message of its own (MAC-39).
+ *
  * The .am file is written while the file is read and is removed at the end
  * if any error was found (MAC-23). See preassembler.h for the contract.
  */
@@ -73,6 +77,9 @@ typedef struct
     ErrorContext *errors; /* The diagnostics context of the file. */
     MacroState state;     /* The state of the scan. */
     Macro *current;       /* The macro being recorded, if any. */
+    int open_line;        /* The line of the "mcro" line that opened the
+                             definition being recorded and has had no
+                             message, or NO_LINE (MAC-39). */
     int line_number;      /* The number of the line being handled. */
 } Scan;
 
@@ -288,7 +295,9 @@ static Boolean definition_is_faulty(const Scan *scan, const char *name,
 /*
  * Opens the definition of a macro whose name has legal syntax: enters the
  * macro into the table and starts recording, or reports the fault of the
- * line and leaves the definition to be discarded (MAC-38).
+ * line and leaves the definition to be discarded (MAC-38). The line number
+ * of a line that has had no message is kept, for the case that the
+ * definition is never closed (MAC-39).
  *   scan   the scan; its state is STATE_DISCARDING on entry
  *   name   the macro name, as a string
  *   after  the text that follows the name on the line
@@ -309,6 +318,7 @@ static Boolean open_definition(Scan *scan, const char *name,
         return FALSE;
     }
     scan->state = STATE_RECORDING;
+    scan->open_line = quiet ? NO_LINE : scan->line_number;
     return TRUE;
 }
 
@@ -466,6 +476,7 @@ static Boolean handle_recording(Scan *scan, const char *line, Boolean quiet)
     }
     scan->state = STATE_OUTSIDE;
     scan->current = NULL;
+    scan->open_line = NO_LINE;
     if (quiet)
     {
         return TRUE;
@@ -542,8 +553,28 @@ static Boolean handle_line(Scan *scan, const char *line, size_t length)
 }
 
 /*
+ * Reports a macro definition that is still open when the end of the file is
+ * reached (ERR-48), with the number of its "mcro" line. Nothing is reported
+ * when no definition is open, or when the "mcro" line that opened it already
+ * has a message of its own (MAC-39, ERR-R16).
+ *   scan  the scan, after the last line of the file
+ */
+static void report_unclosed_definition(const Scan *scan)
+{
+    if (scan->open_line != NO_LINE)
+    {
+        errors_report(scan->errors, scan->open_line,
+                      "'" MACRO_END_KEYWORD "' is missing at the end of the "
+                      "definition of the macro '%s'",
+                      macro_name(scan->current));
+    }
+}
+
+/*
  * Reads the whole source file and handles every line. A source file that
  * cannot be read is reported here, without a line number (CLI-12, ERR-47).
+ * A definition that the end of the file leaves open is reported after the
+ * last line (MAC-39).
  *   scan    the scan
  *   source  the .as file
  * Returns FALSE when memory is exhausted.
@@ -572,6 +603,10 @@ static Boolean scan_source(Scan *scan, FILE *source)
     {
         errors_report(scan->errors, NO_LINE, "cannot read the '%s' file",
                       SOURCE_EXTENSION);
+    }
+    else if (status == READ_END && enough_memory)
+    {
+        report_unclosed_definition(scan);
     }
     return (enough_memory && status != READ_NO_MEMORY) ? TRUE : FALSE;
 }
@@ -626,6 +661,7 @@ StageResult preassemble(FILE *source, const char *am_file_name,
     scan.errors = errors;
     scan.state = STATE_OUTSIDE;
     scan.current = NULL;
+    scan.open_line = NO_LINE;
     scan.line_number = FIRST_LINE_NUMBER;
     completed = scan_source(&scan, source);
     return finish_output(&scan, am_file_name, completed);

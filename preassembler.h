@@ -4,10 +4,10 @@
  * The pre-assembler reads the source file, checks the length of every line
  * (SYN-2b), collects the macro definitions, replaces every macro call by
  * the body of the macro and writes the result to the .am file (MAC-29). It
- * reports every pre-assembler error of SPEC section 5.2 (ERR-2 to ERR-10)
- * and a line that contains a NUL byte (ERR-46), each with its .as line
- * number, one message per line (ERR-R16), and does not stop at the first
- * (MAC-22). A source file that cannot be read is reported without a line
+ * reports every pre-assembler error of SPEC section 5.2 (ERR-2 to ERR-10),
+ * a line that contains a NUL byte (ERR-46) and a macro definition that is
+ * not closed (ERR-48), each with its .as line number, one message per line
+ * (ERR-R16), and does not stop at the first (MAC-22). A source file that cannot be read is reported without a line
  * number (ERR-47). The pre-assembler does not look into macro bodies and
  * does not check labels (MAC-24); the passes do that.
  */
