@@ -5,23 +5,54 @@ then continue with the next phase."
 
 ## Current state
 
-- **Phases 0 to 3: finished 2026-11-26.**
-- **Phase 4 (Clean-up): finished 2026-11-27. STOPPED, waiting for the owner's
-  approval before Phase 5 (demo).**
-- State of the code at the stop: `make` prints no warning; `make test` prints
-  `passed 195, failed 0, total 195`; the final independent review
-  (`docs/audit/REVIEW_FINAL.md`) found no blocker: valgrind is clean on all
-  195 test inputs, 1,156 allocation-failure injections all end cleanly, and
-  60,400 fuzz iterations under AddressSanitizer and UBSan gave no crash, hang
-  or report. No function is longer than 40 lines.
+- **Phases 0 to 4: finished and approved by the owner (2026-11-27).**
+- **Phase 5 (Demo): steps a to d are built and wait for the owner to merge
+  the pull request and to enable GitHub Pages. Step e (a live in-browser
+  version through WebAssembly) is optional and must not be started without
+  the owner's approval.**
+- State of the code: `make` prints no warning; `make test` prints
+  `passed 209, failed 0, total 209`; valgrind is clean on every case of
+  `tests/valid` and `tests/errors`. No function is longer than 40 lines.
 - The modules, their responsibilities, public functions and dependencies are
   in `docs/MODULES.md`.
-- Working branch: `claude/project-thread-l0vj7x`. Nothing has been merged to
-  `main`; there is no pull request yet.
-- Next: Phase 5 (demo, GitHub Actions, GitHub Pages, README). `README.md`
-  still describes the old code and must be rewritten there. `CHANGELOG.md`
-  was deleted because it described files that no longer exist; the git
-  history is the change log.
+- Working branch: `claude/project-thread-l0vj7x`, with a pull request to
+  `main`.
+
+## Phase 5: what was done
+
+1. The owner's decisions of 2026-11-27 were recorded in SPEC (`f8a34d6`,
+   repaired in `0b28f10`): Q-34 to Q-40 are settled and section 6.1 is empty.
+   New rules: LBL-24, MAC-39, MAC-40, MAC-41, ALG-18, ERR-48, ERR-49. One
+   detail was decided by the project and not by the owner: the message for a
+   macro definition that is not closed (ERR-48) is printed last among the
+   pre-assembler messages of the file (MAC-39).
+2. Fourteen test cases for those rules (`0b28f10`), 209 cases in all, and the
+   one new behaviour, MAC-39, implemented in `preassembler.c` (`e246467`).
+3. `demo/` (`969cc2e`): `build_demo.sh` builds the assembler, runs the real
+   binary on the cases listed in `demo/examples.txt` and writes the
+   self-contained page `demo/index.html` (generated, ignored by git), in
+   which every word of every object file is decoded by an independent
+   decoder (`demo/make_page.py`) that stops the build at a word it cannot
+   explain. `run_demo.sh` shows the same run step by step in a terminal
+   (`DEMO_PAUSE=0` runs it without pauses).
+4. `.github/workflows/demo.yml`: on a push to `main` it builds with zero
+   warnings, runs `make test`, builds the page and publishes it to GitHub
+   Pages; on a pull request it does the same without publishing.
+5. `README.md` rewritten for a visitor who does not know the project.
+
+## Open after Phase 5
+
+- The owner merges the pull request and sets Settings, Pages, Source to
+  "GitHub Actions". The page is then at
+  https://rachelyglb.github.io/assembler-project/ . The versions of the
+  actions in the workflow were written without network access and are
+  confirmed by the first run.
+- The owner decides on step e (WebAssembly), on whether `CLAUDE.md`, which
+  names the course, stays in the public repository as it is, and on whether
+  the demo should keep the example `tests/valid/ps`, which is a sample
+  program of the course material.
+- The order of the ERR-48 message (item 1 above) awaits the owner's
+  confirmation.
 
 ## Phase 4: what was done
 
@@ -43,23 +74,6 @@ then continue with the next phase."
    diagnostics (the style is recorded at the top of `errors.h`); `bec4566`
    `statement` split from `syntax`; and a last step for the comment and
    wording findings of the final review.
-
-## Waiting for the owner at the Phase 4 stop
-
-- Approval of the code and of the module structure (`docs/MODULES.md`).
-- Confirmation that building by pipeline stage, which also rewrote
-  `symbol_table`, `output_writer`, the error module and `assembler.c`, was
-  acceptable (see Phase 3 below).
-- SPEC section 6.1, with what the code does today: Q-34, Q-35, Q-36, Q-37
-  (see Phase 3 below); Q-38 a `mcro` with no `mcroend` swallows the rest of
-  the file silently (recommended: report an error on the `mcro` line); Q-39 a
-  reserved word, an ill-formed or over-long name used as an operand, and a
-  macro name given to `.extern`, are first-pass errors; Q-40 confirmation of
-  SYN-26 (NUL byte is an error) and CLI-12 (unreadable source is an error),
-  which the project decided after the review.
-- Whether `docs/audit/` (the diagnosis of the old code and the reviews) should
-  stay in the public repository. Recommended: keep it; it documents how the
-  rebuild was done.
 
 ## Phase 3: what was done
 

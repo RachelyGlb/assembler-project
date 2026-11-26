@@ -1,0 +1,87 @@
+# Build, test and publish the demo page.
+#
+# On every push to `main`, and when started by hand, this workflow builds the
+# assembler with `make` and fails if the compiler printed any warning, runs
+# the whole test suite with `make test`, generates the demo page with
+# `demo/build_demo.sh` and publishes that single page to GitHub Pages.
+#
+# On a pull request it runs the same build, test and demo-build steps, so a
+# change that breaks any of them is caught before it is merged, but it
+# publishes nothing.
+#
+# The runner already has gcc, make and python3, so nothing is installed. The
+# repository must have GitHub Pages enabled with "GitHub Actions" as the
+# source (Settings, Pages).
+
+name: Demo
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+jobs:
+  build:
+    name: Build, test and generate the page
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@v6
+
+      # The coding rules of the project require a build with zero warnings.
+      # gcc reports a warning on stderr without failing, so the output is
+      # kept and searched. The default shell of a `run` step uses `pipefail`,
+      # so a failing `make` fails the step in spite of the pipe.
+      - name: Build with zero warnings
+        run: |
+          make 2>&1 | tee build.log
+          if grep -i 'warning' build.log; then
+            echo "The build printed at least one warning." >&2
+            exit 1
+          fi
+          rm -f build.log
+
+      - name: Run the test suite
+        run: make test
+
+      # The page is written into a directory of its own, so that the Pages
+      # artifact holds index.html and nothing else.
+      - name: Generate the demo page
+        run: |
+          mkdir -p _site
+          DEMO_OUTPUT="$PWD/_site/index.html" sh demo/build_demo.sh
+          ls -l _site
+
+      - name: Configure GitHub Pages
+        if: github.event_name != 'pull_request'
+        uses: actions/configure-pages@v5
+
+      - name: Upload the page as the Pages artifact
+        if: github.event_name != 'pull_request'
+        uses: actions/upload-pages-artifact@v4
+        with:
+          path: _site
+
+  deploy:
+    name: Publish to GitHub Pages
+    if: github.event_name != 'pull_request'
+    needs: build
+    runs-on: ubuntu-latest
+    # Only one deployment runs at a time. A deployment that has started is
+    # allowed to finish, so that the published page is never left half-way.
+    concurrency:
+      group: pages
+      cancel-in-progress: false
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy the Pages artifact
+        id: deployment
+        uses: actions/deploy-pages@v4
