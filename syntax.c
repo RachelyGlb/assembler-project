@@ -13,6 +13,7 @@
 #include "syntax.h"
 
 #include <ctype.h>
+#include <stdarg.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -74,6 +75,14 @@
 /* The first size of the array of data values. */
 #define VALUES_INITIAL_CAPACITY 8
 
+/* What a name is on its line, for the messages about names. */
+#define ROLE_LABEL "label"
+#define ROLE_OPERAND "operand"
+
+/* The numbers of the first and of the last register, for a message (M-2). */
+#define FIRST_REGISTER_NUMBER 0
+#define LAST_REGISTER_NUMBER (REGISTER_COUNT - 1)
+
 /* What is wrong with a candidate label name, if anything. */
 typedef enum
 {
@@ -110,6 +119,13 @@ struct Statement
     int data_count;                 /* The number of data words taken. */
 };
 
+/*
+ * What an operand of each addressing mode is, in the words of a message;
+ * the index is the AddressingMode (ADR-1).
+ */
+static const char *const mode_descriptions[ADDRESSING_MODE_COUNT] = {
+    "an immediate value", "a label", "a matrix element", "a register"};
+
 /* What every parsing function needs. */
 typedef struct
 {
@@ -138,32 +154,23 @@ typedef struct
 
 /*
  * Reports the syntax error of the line and marks the statement as not
- * valid.
+ * valid. A piece of the line is quoted with "%.*s", its length (an int)
+ * and its first character.
  *   parser  the parser of the line
- *   text    the message
+ *   format  a printf format for the message, in the style of errors.h,
+ *           followed by its arguments
  * Returns FALSE, so that a caller can write "return fail(...)".
  */
-static Boolean fail(Parser *parser, const char *text)
+static Boolean fail(Parser *parser, const char *format, ...)
+    ERRORS_PRINTF_FORMAT(2, 3);
+static Boolean fail(Parser *parser, const char *format, ...)
 {
-    errors_report(parser->errors, parser->line_number, "%s", text);
-    parser->statement->valid = FALSE;
-    return FALSE;
-}
+    va_list arguments;
 
-/*
- * Reports the syntax error of the line with a piece of the line quoted in
- * the message, and marks the statement as not valid.
- *   parser  the parser of the line
- *   format  a printf format with exactly one "%.*s" conversion
- *   start   the first character of the piece
- *   end     the position just after the piece
- * Returns FALSE.
- */
-static Boolean fail_at(Parser *parser, const char *format, const char *start,
-                       const char *end)
-{
-    errors_report(parser->errors, parser->line_number, format,
-                  (int)(end - start), start);
+    va_start(arguments, format);
+    errors_report_list(parser->errors, parser->line_number, format,
+                       arguments);
+    va_end(arguments);
     parser->statement->valid = FALSE;
     return FALSE;
 }
@@ -242,42 +249,37 @@ static NameStatus check_name(const char *name)
 }
 
 /*
- * Returns the words that describe a name that is not legal, for a message.
- *   status  the result of check_name, not NAME_LEGAL
- */
-static const char *name_problem(NameStatus status)
-{
-    switch (status)
-    {
-    case NAME_TOO_LONG:
-        return "is longer than " STRINGIFY(MAX_NAME_LENGTH) " characters";
-    case NAME_RESERVED:
-        return "is a reserved word";
-    default:
-        return "must be a letter followed by letters and digits";
-    }
-}
-
-/*
- * Checks that a name is a legal label name and reports it when it is not.
+ * Checks that a name is a legal label name and reports it when it is not
+ * (ERR-11, ERR-12, ERR-13, ERR-34).
  *   parser  the parser of the line
  *   name    the name, a string
- *   role    what the name is used as, for the message
+ *   role    what the name is on the line, "label" or "operand", for the
+ *           message
  * Returns TRUE when the name is legal.
  */
 static Boolean require_name(Parser *parser, const char *name,
                             const char *role)
 {
-    NameStatus status = check_name(name);
-
-    if (status == NAME_LEGAL)
+    switch (check_name(name))
     {
+    case NAME_LEGAL:
         return TRUE;
+    case NAME_TOO_LONG:
+        return fail(parser,
+                    "the %s '%s' is longer than the %d characters of a "
+                    "label name",
+                    role, name, MAX_NAME_LENGTH);
+    case NAME_RESERVED:
+        return fail(parser,
+                    "the %s '%s' is a reserved word and cannot be a label "
+                    "name",
+                    role, name);
+    default:
+        return fail(parser,
+                    "the %s '%s' is not a legal label name; a label name is "
+                    "a letter followed by letters and digits",
+                    role, name);
     }
-    errors_report(parser->errors, parser->line_number, "%s '%s' %s", role,
-                  name, name_problem(status));
-    parser->statement->valid = FALSE;
-    return FALSE;
 }
 
 /*
@@ -358,25 +360,26 @@ static const char *parse_list_value(Parser *parser, const char *text)
 
     if (*start == OPERAND_SEPARATOR)
     {
-        fail(parser, "a comma stands where a number is expected");
+        fail(parser, "unexpected comma where a number is expected");
         return NULL;
     }
     if (*start == '\0')
     {
-        fail(parser, "a comma follows the last number of the list");
+        fail(parser, "a number is missing after the last comma");
         return NULL;
     }
     if (!read_integer(start, end, &value))
     {
-        fail_at(parser, "'%.*s' is not a legal integer", start, end);
+        fail(parser, "'%.*s' is not a legal integer", (int)(end - start),
+             start);
         return NULL;
     }
     if (value < DATA_VALUE_MIN || value > DATA_VALUE_MAX)
     {
-        fail_at(parser,
-                "the value %.*s does not fit in a data word of "
-                STRINGIFY(WORD_BITS) " bits",
-                start, end);
+        fail(parser,
+             "the value '%.*s' is out of range; a data word holds %ld to "
+             "%ld",
+             (int)(end - start), start, DATA_VALUE_MIN, DATA_VALUE_MAX);
         return NULL;
     }
     return append_value(parser, (int)value) ? end : NULL;
@@ -398,7 +401,8 @@ static Boolean parse_number_list(Parser *parser, const char *text,
     if (*position == '\0')
     {
         return allow_empty ? TRUE
-                           : fail(parser, "the directive has no values");
+                           : fail(parser, "the list of numbers is missing "
+                                          "after the directive");
     }
     for (;;)
     {
@@ -453,8 +457,11 @@ static Boolean store_string(Parser *parser, const char *start,
         if (character < FIRST_STRING_CHARACTER ||
             character > LAST_STRING_CHARACTER)
         {
-            return fail(parser, "the string holds a character that is not "
-                                "printable ASCII");
+            return fail(parser,
+                        "the string contains a character with code %d, "
+                        "which is not printable ASCII (codes %d to %d)",
+                        (int)character, FIRST_STRING_CHARACTER,
+                        LAST_STRING_CHARACTER);
         }
         if (!append_value(parser, (int)character))
         {
@@ -478,18 +485,18 @@ static void parse_string(Parser *parser, const char *text)
 
     if (*open != STRING_QUOTE)
     {
-        fail(parser, "the operand of .string must start with a quotation "
-                     "mark");
+        fail(parser, "the opening quotation mark of the string is missing");
         return;
     }
     if (close == open)
     {
-        fail(parser, "the string has no closing quotation mark");
+        fail(parser, "the closing quotation mark of the string is missing");
         return;
     }
     if (!util_is_blank(close + 1))
     {
-        fail(parser, "there is text after the closing quotation mark");
+        fail(parser, "unexpected text after the closing quotation mark of "
+                     "the string");
         return;
     }
     if (store_string(parser, open + 1, close))
@@ -516,13 +523,15 @@ static const char *parse_dimension(Parser *parser, const char *text,
 
     if (*text != OPEN_BRACKET)
     {
-        fail(parser, "a matrix dimension in square brackets is expected");
+        fail(parser, "a matrix dimension in square brackets is missing; two "
+                     "are expected, the second right after the first");
         return NULL;
     }
     start = util_skip_spaces(text + 1);
     if (*start == PLUS_SIGN || *start == MINUS_SIGN)
     {
-        fail(parser, "a matrix dimension must not have a sign");
+        fail(parser, "a matrix dimension has a sign; a positive number "
+                     "without a sign is expected");
         return NULL;
     }
     for (end = start; isdigit((unsigned char)*end); end++)
@@ -531,13 +540,14 @@ static const char *parse_dimension(Parser *parser, const char *text,
     if (!read_integer(start, end, &value) ||
         *util_skip_spaces(end) != CLOSE_BRACKET)
     {
-        fail(parser, "a matrix dimension must be a number in square "
+        fail(parser, "a matrix dimension is not a number enclosed in square "
                      "brackets");
         return NULL;
     }
     if (value == 0)
     {
-        fail(parser, "a matrix dimension must be at least 1");
+        fail(parser, "a matrix dimension is zero; a positive number is "
+                     "expected");
         return NULL;
     }
     *dimension = (value > DIMENSION_CLAMP) ? DIMENSION_CLAMP : (int)value;
@@ -570,7 +580,8 @@ static void parse_mat(Parser *parser, const char *text)
     }
     if (statement->value_count > rows * columns)
     {
-        fail(parser, "the matrix has more values than cells");
+        fail(parser, "the matrix has %d values but room for only %d",
+             statement->value_count, rows * columns);
         return;
     }
     statement->data_count = rows * columns;
@@ -590,7 +601,8 @@ static void parse_symbol_operand(Parser *parser, const char *text)
 
     if (start == end)
     {
-        fail(parser, "the directive needs the name of a label");
+        fail(parser, "the operand of the directive is missing; one label "
+                     "name is expected");
         return;
     }
     name = copy_piece(parser, start, end);
@@ -599,13 +611,15 @@ static void parse_symbol_operand(Parser *parser, const char *text)
         return;
     }
     parser->statement->directive_symbol = name;
-    if (!require_name(parser, name, "the operand"))
+    if (!require_name(parser, name, ROLE_OPERAND))
     {
         return;
     }
     if (!util_is_blank(end))
     {
-        fail(parser, "the directive takes exactly one label");
+        fail(parser, "unexpected text after the operand '%s'; the directive "
+                     "takes one label name",
+             name);
     }
 }
 
@@ -630,12 +644,11 @@ static void report_unknown_directive(Parser *parser, const char *start,
     if (directive_find_text(start, (size_t)(name_end - start)) !=
         DIRECTIVE_NONE)
     {
-        fail_at(parser,
-                "the directive name %.*s is not followed by white space", start,
-                name_end);
+        fail(parser, "white space is missing after the directive name '%.*s'",
+             (int)(name_end - start), start);
         return;
     }
-    fail_at(parser, "unknown directive '%.*s'", start, end);
+    fail(parser, "unknown directive '%.*s'", (int)(end - start), start);
 }
 
 /*
@@ -708,16 +721,18 @@ static const char *parse_immediate(Parser *parser, const char *text,
 
     if (!read_integer(text + 1, end, &value))
     {
-        fail_at(parser, "'%.*s' is not '#' followed by a legal integer",
-                text, end);
+        fail(parser,
+             "the immediate operand '%.*s' is not '%c' followed by a legal "
+             "integer",
+             (int)(end - text), text, IMMEDIATE_CHARACTER);
         return NULL;
     }
     if (value < IMMEDIATE_MIN || value > IMMEDIATE_MAX)
     {
-        fail_at(parser,
-                "the immediate operand %.*s does not fit in "
-                STRINGIFY(OPERAND_FIELD_BITS) " bits",
-                text, end);
+        fail(parser,
+             "the immediate operand '%.*s' is out of range; an immediate "
+             "operand holds %ld to %ld",
+             (int)(end - text), text, IMMEDIATE_MIN, IMMEDIATE_MAX);
         return NULL;
     }
     operand->mode = ADDRESSING_IMMEDIATE;
@@ -743,7 +758,8 @@ static const char *parse_index(Parser *parser, const char *text,
 
     if (close == NULL)
     {
-        fail(parser, "a matrix index has no closing bracket");
+        fail(parser, "the closing square bracket of a matrix index is "
+                     "missing");
         return NULL;
     }
     while (end > start && util_is_space(end[-1]))
@@ -753,8 +769,11 @@ static const char *parse_index(Parser *parser, const char *text,
     *register_ = register_number_text(start, (size_t)(end - start));
     if (*register_ == NOT_A_REGISTER)
     {
-        fail_at(parser, "the matrix index '%.*s' is not a register r0 to r7",
-                start, end);
+        fail(parser,
+             "the matrix index '%.*s' is not a register; one of 'r%d' to "
+             "'r%d' is expected",
+             (int)(end - start), start, FIRST_REGISTER_NUMBER,
+             LAST_REGISTER_NUMBER);
         return NULL;
     }
     return close + 1;
@@ -780,9 +799,11 @@ static const char *parse_matrix(Parser *parser, const char *text,
     if (*position != OPEN_BRACKET)
     {
         fail(parser, (*util_skip_spaces(position) == OPEN_BRACKET)
-                         ? "white space separates the two indices of a "
-                           "matrix operand"
-                         : "a matrix operand needs two indices in brackets");
+                         ? "white space is not allowed between the two "
+                           "indices of a matrix operand"
+                         : "the second index of a matrix operand is "
+                           "missing; two indices in square brackets are "
+                           "expected");
         return NULL;
     }
     position = parse_index(parser, position, &operand->column_register);
@@ -792,8 +813,8 @@ static const char *parse_matrix(Parser *parser, const char *text,
     }
     if (!ends_token(*position))
     {
-        fail(parser, "there is text right after the second index of a "
-                     "matrix operand");
+        fail(parser, "unexpected text after the second index of a matrix "
+                     "operand");
         return NULL;
     }
     operand->mode = ADDRESSING_MATRIX;
@@ -832,7 +853,7 @@ static const char *parse_named_operand(Parser *parser, const char *text,
             return end;
         }
     }
-    if (!require_name(parser, operand->symbol, "the operand"))
+    if (!require_name(parser, operand->symbol, ROLE_OPERAND))
     {
         return NULL;
     }
@@ -859,18 +880,21 @@ static const char *parse_operand(Parser *parser, const char *text)
     if (*start == '\0')
     {
         fail(parser, (statement->operand_count == 0)
-                         ? "the operation needs more operands"
-                         : "an operand is missing after the comma");
+                         ? "an operand is missing; the operation takes %d"
+                         : "an operand is missing after the comma; the "
+                           "operation takes %d",
+             instruction_operand_count(statement->instruction));
         return NULL;
     }
     if (*start == OPERAND_SEPARATOR)
     {
-        fail(parser, "a comma stands where an operand is expected");
+        fail(parser, "unexpected comma where an operand is expected");
         return NULL;
     }
     if (*start == OPEN_BRACKET)
     {
-        fail(parser, "a matrix operand needs a label before its brackets");
+        fail(parser, "the label of a matrix operand is missing before its "
+                     "first index");
         return NULL;
     }
     end = (*start == IMMEDIATE_CHARACTER)
@@ -900,16 +924,17 @@ static const char *expect_comma(Parser *parser, const char *text)
     }
     if (*position == '\0')
     {
-        fail(parser, "the operation needs more operands");
+        fail(parser, "an operand is missing; the operation takes %d",
+             instruction_operand_count(parser->statement->instruction));
     }
     else if (*position == OPEN_BRACKET)
     {
-        fail(parser, "white space separates a matrix label from its "
-                     "brackets");
+        fail(parser, "white space is not allowed between the label of a "
+                     "matrix operand and its first index");
     }
     else
     {
-        fail(parser, "a comma is missing between the operands");
+        fail(parser, "a comma is missing between two operands");
     }
     return NULL;
 }
@@ -932,20 +957,25 @@ static Boolean expect_end(Parser *parser, const char *text)
     }
     if (parser->statement->operand_count == 0)
     {
-        return fail(parser, "the operation takes no operands");
+        return fail(parser, "unexpected text after the operation name; the "
+                            "operation takes no operands");
     }
     if (*position == OPEN_BRACKET)
     {
-        return fail(parser, "white space separates a matrix label from its "
-                            "brackets");
+        return fail(parser, "white space is not allowed between the label "
+                            "of a matrix operand and its first index");
     }
     if (*position != OPERAND_SEPARATOR)
     {
-        return fail(parser, "there is extra text after the last operand");
+        return fail(parser, "unexpected text after the last operand");
     }
-    return fail(parser, util_is_blank(position + 1)
-                            ? "a comma follows the last operand"
-                            : "the operation has too many operands");
+    if (util_is_blank(position + 1))
+    {
+        return fail(parser, "unexpected comma after the last operand");
+    }
+    return fail(parser, "unexpected operand after the last one; the "
+                        "operation takes only %d",
+                parser->statement->operand_count);
 }
 
 /*
@@ -966,16 +996,18 @@ static void check_modes(Parser *parser)
         {
             if (!instruction_allows_source(statement->instruction, mode))
             {
-                fail(parser, "the addressing mode of the source operand is "
-                             "not legal for this operation");
+                fail(parser, "the source operand is %s, which the "
+                             "operation does not allow",
+                     mode_descriptions[mode]);
                 return;
             }
         }
         else if (!instruction_allows_destination(statement->instruction,
                                                  mode))
         {
-            fail(parser, "the addressing mode of the destination operand "
-                         "is not legal for this operation");
+            fail(parser, "the destination operand is %s, which the "
+                         "operation does not allow",
+                 mode_descriptions[mode]);
             return;
         }
     }
@@ -1030,12 +1062,11 @@ static void report_unknown_operation(Parser *parser, const char *start,
     }
     if (instruction_find_text(start, (size_t)(name_end - start)) != NULL)
     {
-        fail_at(parser,
-                "the operation name %.*s is not followed by white space", start,
-                name_end);
+        fail(parser, "white space is missing after the operation name '%.*s'",
+             (int)(name_end - start), start);
         return;
     }
-    fail_at(parser, "unknown operation '%.*s'", start, end);
+    fail(parser, "unknown operation '%.*s'", (int)(end - start), start);
 }
 
 /*
@@ -1105,7 +1136,7 @@ static Boolean store_label(Parser *parser, const char *start,
     {
         return FALSE;
     }
-    if (!require_name(parser, name, "the label"))
+    if (!require_name(parser, name, ROLE_LABEL))
     {
         free(name);
         return FALSE;
@@ -1139,7 +1170,9 @@ static const char *parse_label(Parser *parser, const char *first)
         {
             return first;
         }
-        fail(parser, "white space separates the label from its colon");
+        fail(parser, "white space is not allowed between the label '%.*s' "
+                     "and its colon",
+             (int)(end - first), first);
         return NULL;
     }
     if (!store_label(parser, first, colon))
@@ -1148,12 +1181,15 @@ static const char *parse_label(Parser *parser, const char *first)
     }
     if (colon + 1 != end)
     {
-        fail(parser, "white space is missing after the colon of the label");
+        fail(parser, "white space is missing after the colon of the label "
+                     "'%s'",
+             parser->statement->label);
         return NULL;
     }
     if (util_is_blank(end))
     {
-        fail(parser, "the label is followed by no statement");
+        fail(parser, "a statement is missing after the label '%s'",
+             parser->statement->label);
         return NULL;
     }
     return util_skip_spaces(end);

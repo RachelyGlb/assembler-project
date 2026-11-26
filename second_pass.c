@@ -43,15 +43,15 @@ static void mark_entry(SecondPass *pass, const Statement *statement)
     if (symbol == NULL)
     {
         errors_report(pass->errors, pass->line_number,
-                      ".entry names the symbol '%s', which is not defined "
-                      "in this file",
+                      "the symbol '%s' declared '.entry' is not defined in "
+                      "this file",
                       name);
         return;
     }
     if (symbol_kind(symbol) == SYMBOL_EXTERNAL)
     {
         errors_report(pass->errors, pass->line_number,
-                      "the symbol '%s' is declared both .entry and .extern",
+                      "the symbol '%s' is declared both '.entry' and '.extern'",
                       name);
         return;
     }
@@ -75,8 +75,8 @@ static Boolean resolve_symbol(SecondPass *pass, const char *name, int address)
     if (symbol == NULL)
     {
         errors_report(pass->errors, pass->line_number,
-                      "the symbol '%s' is neither defined nor declared "
-                      ".extern",
+                      "the symbol '%s' is neither defined in this file nor "
+                      "declared '.extern'",
                       name);
         return FALSE;
     }

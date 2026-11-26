@@ -42,7 +42,7 @@ static StageResult open_output(const char *base_name, const char *extension,
     free(file_name);
     if (*file == NULL)
     {
-        errors_report(errors, NO_LINE, "cannot create the %s output file",
+        errors_report(errors, NO_LINE, "cannot create the '%s' file",
                       extension);
         return STAGE_ERRORS;
     }
@@ -67,7 +67,7 @@ static StageResult close_output(FILE *file, const char *extension,
     }
     if (failed)
     {
-        errors_report(errors, NO_LINE, "cannot write the %s output file",
+        errors_report(errors, NO_LINE, "cannot write the '%s' file",
                       extension);
         return STAGE_ERRORS;
     }

@@ -167,7 +167,7 @@ static StageResult job_assemble(FileJob *job)
     job->expanded = fopen(job->am_name, READ_MODE);
     if (job->expanded == NULL)
     {
-        errors_report(job->errors, NO_LINE, "cannot open the %s file",
+        errors_report(job->errors, NO_LINE, "cannot open the '%s' file",
                       EXPANDED_EXTENSION);
         return STAGE_ERRORS;
     }
@@ -203,7 +203,8 @@ static StageResult job_run(FileJob *job)
     job->source = fopen(job->source_name, READ_MODE);
     if (job->source == NULL)
     {
-        errors_report(job->errors, NO_LINE, "cannot open the source file");
+        errors_report(job->errors, NO_LINE, "cannot open the '%s' file",
+                      SOURCE_EXTENSION);
         return STAGE_ERRORS;
     }
     result = preassemble(job->source, job->am_name, job->macros, job->lines,

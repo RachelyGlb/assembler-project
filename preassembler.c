@@ -243,29 +243,46 @@ static Boolean is_valid_macro_name(const Field *name)
 }
 
 /*
- * Finds what is wrong with a "mcro" line whose name has legal syntax.
+ * Tells whether a "mcro" line whose name has legal syntax is faulty, and
+ * reports the fault: a reserved word (ERR-2), a name defined before (ERR-8)
+ * or text after the name (ERR-3), in this order.
  *   scan   the scan
  *   name   the macro name, as a string
  *   after  the text that follows the name on the line
- * Returns the text of the error (ERR-2, ERR-8 or ERR-3), or NULL when the
- * line is correct.
+ *   quiet  TRUE when the line has already had its message
+ * Returns TRUE when the line is faulty.
  */
-static const char *definition_fault(const Scan *scan, const char *name,
-                                    const char *after)
+static Boolean definition_is_faulty(const Scan *scan, const char *name,
+                                    const char *after, Boolean quiet)
 {
-    if (is_reserved_word(name))
+    Boolean reserved = is_reserved_word(name);
+    Boolean defined = (macro_table_find(scan->macros, name) != NULL) ? TRUE
+                                                                     : FALSE;
+    Boolean followed = util_is_blank(after) ? FALSE : TRUE;
+
+    if (quiet)
     {
-        return "the macro name is a reserved word of the language";
+        /* The line keeps the one message that it already has (ERR-R16). */
     }
-    if (macro_table_find(scan->macros, name) != NULL)
+    else if (reserved)
     {
-        return "a macro with this name is already defined";
+        errors_report(scan->errors, scan->line_number,
+                      "'%s' is a reserved word and cannot be a macro name",
+                      name);
     }
-    if (!util_is_blank(after))
+    else if (defined)
     {
-        return "extra text after the macro name on the mcro line";
+        errors_report(scan->errors, scan->line_number,
+                      "the macro '%s' is already defined", name);
     }
-    return NULL;
+    else if (followed)
+    {
+        errors_report(scan->errors, scan->line_number,
+                      "unexpected text after the macro name '%s' on the '"
+                      MACRO_START_KEYWORD "' line",
+                      name);
+    }
+    return (reserved || defined || followed) ? TRUE : FALSE;
 }
 
 /*
@@ -281,17 +298,11 @@ static const char *definition_fault(const Scan *scan, const char *name,
 static Boolean open_definition(Scan *scan, const char *name,
                                const char *after, Boolean quiet)
 {
-    const char *fault = definition_fault(scan, name, after);
-
-    if (fault != NULL)
+    if (definition_is_faulty(scan, name, after, quiet))
     {
-        if (!quiet)
-        {
-            errors_report(scan->errors, scan->line_number, "%s", fault);
-        }
         return TRUE;
     }
-    /* The name is new: definition_fault has looked it up in the table. */
+    /* The name is new: definition_is_faulty has looked it up in the table. */
     scan->current = macro_table_add(scan->macros, name);
     if (scan->current == NULL)
     {
@@ -299,6 +310,39 @@ static Boolean open_definition(Scan *scan, const char *name,
     }
     scan->state = STATE_RECORDING;
     return TRUE;
+}
+
+/*
+ * Tells whether the name field of a "mcro" line is faulty, and reports the
+ * fault: no name at all (ERR-5) or a name with illegal syntax (ERR-6).
+ *   scan   the scan
+ *   name   the field after the word "mcro"; empty when there is none
+ *   quiet  TRUE when the line has already had its message
+ * Returns TRUE when the field is faulty.
+ */
+static Boolean name_is_faulty(const Scan *scan, const Field *name,
+                              Boolean quiet)
+{
+    Boolean missing = (name->length == 0) ? TRUE : FALSE;
+    Boolean malformed = (!missing && !is_valid_macro_name(name)) ? TRUE
+                                                                 : FALSE;
+
+    if (missing && !quiet)
+    {
+        errors_report(scan->errors, scan->line_number,
+                      "the macro name is missing after '" MACRO_START_KEYWORD
+                      "'");
+    }
+    else if (malformed && !quiet)
+    {
+        errors_report(scan->errors, scan->line_number,
+                      "'%.*s' is not a legal macro name; a macro name is a "
+                      "letter followed by letters, digits and '%c', at most "
+                      "%d characters in all",
+                      (int)name->length, name->start,
+                      MACRO_NAME_EXTRA_CHARACTER, MAX_NAME_LENGTH);
+    }
+    return (missing || malformed) ? TRUE : FALSE;
 }
 
 /*
@@ -314,27 +358,12 @@ static Boolean start_definition(Scan *scan, const char *rest, Boolean quiet)
 {
     Field name;
     const char *after = read_field(rest, &name);
-    const char *fault = NULL;
     char *name_text;
     Boolean enough_memory;
 
     scan->state = STATE_DISCARDING;
-    if (name.length == 0)
+    if (name_is_faulty(scan, &name, quiet))
     {
-        fault = "the macro name is missing after mcro";
-    }
-    else if (!is_valid_macro_name(&name))
-    {
-        fault = "invalid macro name: it must start with a letter, hold only "
-                "letters, digits and '_', and have at most "
-                STRINGIFY(MAX_NAME_LENGTH) " characters";
-    }
-    if (fault != NULL)
-    {
-        if (!quiet)
-        {
-            errors_report(scan->errors, scan->line_number, "%s", fault);
-        }
         return TRUE;
     }
     name_text = util_copy_text(name.start, name.length);
@@ -361,8 +390,9 @@ static Boolean handle_outside(Scan *scan, const char *line, Boolean quiet)
     if (info.labelled && !quiet)
     {
         errors_report(scan->errors, scan->line_number,
-                      "a label is not allowed in front of mcro, mcroend or "
-                      "a macro call");
+                      "a label is not allowed in front of '"
+                      MACRO_START_KEYWORD "', '" MACRO_END_KEYWORD
+                      "' or a macro call");
         quiet = TRUE;
     }
     if (info.kind == LINE_MACRO_START)
@@ -379,8 +409,8 @@ static Boolean handle_outside(Scan *scan, const char *line, Boolean quiet)
         if (!util_is_blank(info.rest))
         {
             errors_report(scan->errors, scan->line_number,
-                          "extra text after the macro name '%s' on a macro "
-                          "call line", macro_name(info.macro));
+                          "unexpected text after the call of the macro '%s'",
+                          macro_name(info.macro));
             return TRUE;
         }
         return expand_macro(scan, info.macro);
@@ -416,12 +446,13 @@ static Boolean handle_recording(Scan *scan, const char *line, Boolean quiet)
     if (info.labelled)
     {
         errors_report(scan->errors, scan->line_number,
-                      "a label is not allowed in front of mcroend");
+                      "a label is not allowed in front of '"
+                      MACRO_END_KEYWORD "'");
     }
     else if (!util_is_blank(info.rest))
     {
         errors_report(scan->errors, scan->line_number,
-                      "extra text after mcroend");
+                      "unexpected text after '" MACRO_END_KEYWORD "'");
     }
     return TRUE;
 }
@@ -514,7 +545,8 @@ static Boolean scan_source(Scan *scan, FILE *source)
     free(line);
     if (status == READ_ERROR)
     {
-        errors_report(scan->errors, NO_LINE, "cannot read the source file");
+        errors_report(scan->errors, NO_LINE, "cannot read the '%s' file",
+                      SOURCE_EXTENSION);
     }
     return (enough_memory && status != READ_NO_MEMORY) ? TRUE : FALSE;
 }
@@ -538,8 +570,8 @@ static StageResult finish_output(Scan *scan, const char *am_file_name,
     }
     if (completed && write_failed)
     {
-        errors_report(scan->errors, NO_LINE, "cannot write the file %s",
-                      am_file_name);
+        errors_report(scan->errors, NO_LINE, "cannot write the '%s' file",
+                      EXPANDED_EXTENSION);
     }
     if (completed && errors_count(scan->errors) == 0)
     {
@@ -560,8 +592,8 @@ StageResult preassemble(FILE *source, const char *am_file_name,
     scan.output = fopen(am_file_name, WRITE_MODE);
     if (scan.output == NULL)
     {
-        errors_report(errors, NO_LINE, "cannot create the file %s",
-                      am_file_name);
+        errors_report(errors, NO_LINE, "cannot create the '%s' file",
+                      EXPANDED_EXTENSION);
         return STAGE_ERRORS;
     }
     scan.macros = macros;

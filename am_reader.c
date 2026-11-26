@@ -43,7 +43,7 @@ static Boolean handle_line(const char *line, int line_number,
  */
 static void report_unreadable(ErrorContext *errors)
 {
-    errors_report(errors, NO_LINE, "cannot read the %s file",
+    errors_report(errors, NO_LINE, "cannot read the '%s' file",
                   EXPANDED_EXTENSION);
 }
 

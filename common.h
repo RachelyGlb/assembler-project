@@ -104,8 +104,4 @@ typedef enum
 /* The number of elements of an array object. */
 #define ARRAY_LENGTH(array) (sizeof(array) / sizeof((array)[0]))
 
-/* Turns the value of a constant into a string literal, for messages. */
-#define STRINGIFY_TOKEN(token) #token
-#define STRINGIFY(constant) STRINGIFY_TOKEN(constant)
-
 #endif /* COMMON_H */

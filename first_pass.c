@@ -23,6 +23,15 @@
 /* A code word before any of its bits is known. */
 #define EMPTY_WORD 0u
 
+/* What keeps a name from becoming a new label, if anything. */
+typedef enum
+{
+    LABEL_FREE,        /* Nothing: the name may be defined. */
+    LABEL_IS_MACRO,    /* The name of a macro of the file (LBL-21). */
+    LABEL_IS_EXTERNAL, /* A symbol declared .extern (DIR-36). */
+    LABEL_IS_DEFINED   /* A label defined before (LBL-5). */
+} LabelConflict;
+
 /* Everything the first pass of one source file needs. */
 typedef struct
 {
@@ -55,9 +64,33 @@ static Boolean add_symbol(FirstPass *pass, const char *name, int address,
 }
 
 /*
- * Tells why a name cannot become a new label and, if asked, reports it:
- * the name of a macro (LBL-21, ERR-14), a symbol declared .extern (DIR-36,
- * ERR-53) or a label defined before (LBL-5, ERR-15).
+ * Finds what keeps a name from becoming a new label.
+ *   pass   the state of the pass
+ *   label  the name of the label
+ * Returns LABEL_FREE or the conflict: the name of a macro comes first, then
+ * a symbol declared .extern, then a label defined before.
+ */
+static LabelConflict find_label_conflict(const FirstPass *pass,
+                                         const char *label)
+{
+    const Symbol *symbol = symbol_table_find(pass->symbols, label);
+
+    if (macro_table_find(pass->macros, label) != NULL)
+    {
+        return LABEL_IS_MACRO;
+    }
+    if (symbol == NULL)
+    {
+        return LABEL_FREE;
+    }
+    return (symbol_kind(symbol) == SYMBOL_EXTERNAL) ? LABEL_IS_EXTERNAL
+                                                    : LABEL_IS_DEFINED;
+}
+
+/*
+ * Tells whether a name can become a new label and, if asked, reports why
+ * it cannot: the name of a macro (LBL-21, ERR-14), a symbol declared
+ * .extern (DIR-36, ERR-53) or a label defined before (LBL-5, ERR-15).
  *   pass    the state of the pass
  *   label   the name of the label
  *   report  TRUE to report the reason; FALSE on a line that already has
@@ -67,26 +100,26 @@ static Boolean add_symbol(FirstPass *pass, const char *name, int address,
 static Boolean label_is_free(FirstPass *pass, const char *label,
                              Boolean report)
 {
-    const Symbol *symbol = symbol_table_find(pass->symbols, label);
-    const char *reason = NULL;
+    LabelConflict conflict = find_label_conflict(pass, label);
 
-    if (macro_table_find(pass->macros, label) != NULL)
+    if (conflict == LABEL_IS_MACRO && report)
     {
-        reason = "the label '%s' has the name of a macro";
+        errors_report(pass->errors, pass->line_number,
+                      "the label '%s' is also the name of a macro", label);
     }
-    else if (symbol != NULL && symbol_kind(symbol) == SYMBOL_EXTERNAL)
+    else if (conflict == LABEL_IS_EXTERNAL && report)
     {
-        reason = "the label '%s' is declared .extern in this file";
+        errors_report(pass->errors, pass->line_number,
+                      "the label '%s' is already declared '.extern' in this "
+                      "file",
+                      label);
     }
-    else if (symbol != NULL)
+    else if (conflict == LABEL_IS_DEFINED && report)
     {
-        reason = "the label '%s' is already defined";
+        errors_report(pass->errors, pass->line_number,
+                      "the label '%s' is already defined", label);
     }
-    if (reason != NULL && report)
-    {
-        errors_report(pass->errors, pass->line_number, reason, label);
-    }
-    return (reason == NULL) ? TRUE : FALSE;
+    return (conflict == LABEL_FREE) ? TRUE : FALSE;
 }
 
 /*
@@ -138,8 +171,8 @@ static Boolean has_room(FirstPass *pass, int words)
     if (!pass->overflow_reported)
     {
         errors_report(pass->errors, pass->line_number,
-                      "the program does not fit in the %d words of memory "
-                      "that follow address %d",
+                      "the program is longer than the %d words of memory "
+                      "available from address %d",
                       MAX_PROGRAM_WORDS, FIRST_LOAD_ADDRESS);
         pass->overflow_reported = TRUE;
     }
@@ -286,7 +319,7 @@ static Boolean declare_external(FirstPass *pass, const Statement *statement)
     if (macro_table_find(pass->macros, name) != NULL)
     {
         errors_report(pass->errors, pass->line_number,
-                      "the symbol '%s' has the name of a macro", name);
+                      "the symbol '%s' is also the name of a macro", name);
         return FALSE;
     }
     if (symbol == NULL)
@@ -297,7 +330,8 @@ static Boolean declare_external(FirstPass *pass, const Statement *statement)
     if (symbol_kind(symbol) != SYMBOL_EXTERNAL)
     {
         errors_report(pass->errors, pass->line_number,
-                      "the symbol '%s' is defined as a label in this file",
+                      "the symbol '%s' is already defined as a label in this "
+                      "file",
                       name);
         return FALSE;
     }
@@ -359,7 +393,7 @@ static Boolean handle_line(const Statement *statement, int line_number,
     {
         /* Only a line without an error gets the warning (ERR-R16). */
         errors_warn(pass->errors, pass->line_number,
-                    "the label in front of .entry or .extern is ignored");
+                    "the label in front of '.entry' or '.extern' is ignored");
     }
     return pass->no_memory ? FALSE : TRUE;
 }

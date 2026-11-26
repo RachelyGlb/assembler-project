@@ -1,22 +1,19 @@
 /*
  * errors.c - the one place that prints diagnostics.
  *
- * See errors.h for the formats. Every diagnostic goes through the static
- * function print_diagnostic, so the layout of a diagnostic line is written
- * down exactly once.
+ * See errors.h for the formats and for the style of the texts. Every
+ * diagnostic, the out-of-memory one included, is printed by the static
+ * function print_diagnostic and by nothing else, so the layout of a
+ * diagnostic line is written down exactly once.
  */
 #include "errors.h"
 
-#include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
 
 /* The severity words of SPEC ERR-R13 and ERR-R14. */
 #define SEVERITY_ERROR "error"
 #define SEVERITY_WARNING "warning"
-
-/* The text of the one diagnostic that this module words itself (ERR-R10). */
-#define NO_MEMORY_TEXT "out of memory; the assembler stops"
 
 /* The diagnostics state of one source file. */
 struct ErrorContext
@@ -44,7 +41,8 @@ static void print_prefix(const char *base_name, int line, const char *severity)
 }
 
 /*
- * Prints one complete diagnostic line.
+ * Prints one complete diagnostic line. This is the only function of the
+ * program that prints a diagnostic.
  *   base_name  the file name without the extension
  *   line       the line number, or NO_LINE
  *   severity   SEVERITY_ERROR or SEVERITY_WARNING
@@ -53,11 +51,33 @@ static void print_prefix(const char *base_name, int line, const char *severity)
  */
 static void print_diagnostic(const char *base_name, int line,
                              const char *severity, const char *format,
+                             va_list arguments) ERRORS_PRINTF_FORMAT(4, 0);
+static void print_diagnostic(const char *base_name, int line,
+                             const char *severity, const char *format,
                              va_list arguments)
 {
     print_prefix(base_name, line, severity);
     vprintf(format, arguments);
     putchar(NEWLINE_CHARACTER);
+}
+
+/*
+ * Prints one complete diagnostic line for a caller that has no va_list.
+ *   base_name  the file name without the extension
+ *   line       the line number, or NO_LINE
+ *   severity   SEVERITY_ERROR or SEVERITY_WARNING
+ *   format     a printf format for the text, followed by its arguments
+ */
+static void print_line(const char *base_name, int line, const char *severity,
+                       const char *format, ...) ERRORS_PRINTF_FORMAT(4, 5);
+static void print_line(const char *base_name, int line, const char *severity,
+                       const char *format, ...)
+{
+    va_list arguments;
+
+    va_start(arguments, format);
+    print_diagnostic(base_name, line, severity, format, arguments);
+    va_end(arguments);
 }
 
 /* Creates the context of one source file; see errors.h. */
@@ -79,9 +99,16 @@ void errors_report(ErrorContext *context, int line, const char *format, ...)
     va_list arguments;
 
     va_start(arguments, format);
+    errors_report_list(context, line, format, arguments);
+    va_end(arguments);
+}
+
+/* Prints one error line from a va_list and counts it; see errors.h. */
+void errors_report_list(ErrorContext *context, int line, const char *format,
+                        va_list arguments)
+{
     print_diagnostic(context->base_name, line, SEVERITY_ERROR, format,
                      arguments);
-    va_end(arguments);
     context->error_count++;
 }
 
@@ -99,8 +126,8 @@ void errors_warn(ErrorContext *context, int line, const char *format, ...)
 /* Prints the error line for an allocation failure; see errors.h. */
 void errors_report_no_memory(const char *base_name)
 {
-    print_prefix(base_name, NO_LINE, SEVERITY_ERROR);
-    puts(NO_MEMORY_TEXT);
+    print_line(base_name, NO_LINE, SEVERITY_ERROR,
+               "out of memory; the assembler stops");
 }
 
 /* Returns the number of errors reported so far; see errors.h. */
