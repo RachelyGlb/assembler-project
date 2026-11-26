@@ -6,10 +6,11 @@
  * word to the memory image; its label, when it is legal and new, is still
  * defined (LBL-23). See first_pass.h for the contract.
  */
+#include "first_pass.h"
+
 #include <stdlib.h>
 
 #include "encoder.h"
-#include "first_pass.h"
 #include "instruction_table.h"
 #include "syntax.h"
 #include "util.h"
@@ -396,6 +397,27 @@ static void report_unreadable(ErrorContext *errors)
                   EXPANDED_EXTENSION);
 }
 
+/*
+ * Prepares the state of the first pass of one source file.
+ *   pass     the state to fill
+ *   macros   the macros of the file
+ *   symbols  the symbol table to fill
+ *   image    the memory image to fill
+ *   errors   the diagnostics context of the file
+ */
+static void init_pass(FirstPass *pass, const MacroTable *macros,
+                      SymbolTable *symbols, MemoryImage *image,
+                      ErrorContext *errors)
+{
+    pass->macros = macros;
+    pass->symbols = symbols;
+    pass->image = image;
+    pass->errors = errors;
+    pass->line_number = NO_LINE;
+    pass->overflow_reported = FALSE;
+    pass->no_memory = FALSE;
+}
+
 /* Runs the first pass on one expanded source file; see first_pass.h. */
 StageResult first_pass(FILE *am_file, const LineMap *lines,
                        const MacroTable *macros, SymbolTable *symbols,
@@ -404,23 +426,17 @@ StageResult first_pass(FILE *am_file, const LineMap *lines,
     FirstPass pass;
     char *line = NULL;
     size_t capacity = 0;
-    size_t length; /* Not used: an .am line holds no NUL byte (SYN-26). */
     int am_line = FIRST_LINE_NUMBER;
     int errors_before = errors_count(errors);
     ReadStatus status;
 
-    pass.macros = macros;
-    pass.symbols = symbols;
-    pass.image = image;
-    pass.errors = errors;
-    pass.overflow_reported = FALSE;
-    pass.no_memory = FALSE;
-    status = util_read_line(am_file, &line, &capacity, &length, FALSE);
+    init_pass(&pass, macros, symbols, image, errors);
+    status = util_read_line(am_file, &line, &capacity, NULL, FALSE);
     while (status == READ_LINE && !pass.no_memory)
     {
         pass.line_number = line_map_source_line(lines, am_line++);
         handle_line(&pass, line);
-        status = util_read_line(am_file, &line, &capacity, &length, FALSE);
+        status = util_read_line(am_file, &line, &capacity, NULL, FALSE);
     }
     free(line);
     if (status == READ_NO_MEMORY || pass.no_memory)

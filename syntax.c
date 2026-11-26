@@ -10,11 +10,12 @@
  *
  * See syntax.h for the contracts of the public functions.
  */
+#include "syntax.h"
+
 #include <ctype.h>
 #include <stdlib.h>
 #include <string.h>
 
-#include "syntax.h"
 #include "util.h"
 
 /* The characters of the assembly language that the parser looks for. */
@@ -67,10 +68,6 @@
 /* The first size of the array of data values, and its growth factor. */
 #define VALUES_INITIAL_CAPACITY 8
 #define VALUES_GROWTH_FACTOR 2
-
-/* Turns the value of a constant into a string literal, for messages. */
-#define STRINGIFY_TOKEN(token) #token
-#define STRINGIFY(constant) STRINGIFY_TOKEN(constant)
 
 /* What is wrong with a candidate label name, if anything. */
 typedef enum
@@ -1452,10 +1449,4 @@ int statement_data_value(const Statement *statement, int index)
 const char *statement_directive_symbol(const Statement *statement)
 {
     return statement->directive_symbol;
-}
-
-/* The one rule for a label name; see syntax.h. */
-Boolean syntax_is_valid_label(const char *name)
-{
-    return (check_name(name) == NAME_LEGAL) ? TRUE : FALSE;
 }

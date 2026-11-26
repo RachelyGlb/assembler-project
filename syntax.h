@@ -205,13 +205,4 @@ int statement_data_value(const Statement *statement, int index);
  */
 const char *statement_directive_symbol(const Statement *statement);
 
-/*
- * The one rule for a label name: a letter followed by letters and digits
- * (LBL-2), at most MAX_NAME_LENGTH characters (LBL-3), and not a reserved
- * word (LBL-20).
- *   name  the candidate name
- * Returns TRUE when name may be the name of a label.
- */
-Boolean syntax_is_valid_label(const char *name);
-
 #endif /* SYNTAX_H */

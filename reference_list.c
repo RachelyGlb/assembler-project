@@ -5,9 +5,10 @@
  * reached by its position in constant time. See reference_list.h for the
  * contracts.
  */
+#include "reference_list.h"
+
 #include <stdlib.h>
 
-#include "reference_list.h"
 #include "util.h"
 
 /* The first size of the array, and its growth factor. */

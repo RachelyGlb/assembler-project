@@ -6,10 +6,10 @@
  * (IMP-1). The set of legal addressing modes of an operand is stored as a
  * bit mask with one bit per mode, so a legality test is a single lookup.
  */
+#include "instruction_table.h"
+
 #include <stddef.h>
 #include <string.h>
-
-#include "instruction_table.h"
 
 /* The bit that stands for one addressing mode in a set of modes. */
 #define MODE_BIT(mode) (1u << (mode))
@@ -22,9 +22,6 @@
 #define MODES_ADDRESSABLE \
     (MODE_BIT(ADDRESSING_DIRECT) | MODE_BIT(ADDRESSING_MATRIX))
 #define MODES_WRITABLE (MODES_ADDRESSABLE | MODE_BIT(ADDRESSING_REGISTER))
-
-/* The number of elements of an array object. */
-#define ARRAY_LENGTH(array) (sizeof(array) / sizeof((array)[0]))
 
 /* The position of the name of a directive after its leading dot. */
 #define DIRECTIVE_DOT_LENGTH 1
@@ -90,12 +87,6 @@ const Instruction *instruction_find(const char *name)
         }
     }
     return NULL;
-}
-
-/* Returns the name of an operation; see instruction_table.h. */
-const char *instruction_name(const Instruction *instruction)
-{
-    return instruction->name;
 }
 
 /* Returns the opcode of an operation; see instruction_table.h. */

@@ -5,10 +5,11 @@
  * that a symbol is appended in constant time and the list keeps the order
  * of the definitions. See symbol_table.h for the contracts.
  */
+#include "symbol_table.h"
+
 #include <stdlib.h>
 #include <string.h>
 
-#include "symbol_table.h"
 #include "util.h"
 
 /* One symbol, a node of the list. */

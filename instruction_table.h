@@ -39,12 +39,6 @@ typedef enum
 const Instruction *instruction_find(const char *name);
 
 /*
- * Returns the name of an operation.
- *   instruction  a row returned by instruction_find
- */
-const char *instruction_name(const Instruction *instruction);
-
-/*
  * Returns the opcode of an operation, 0 to 15 (INS-1).
  *   instruction  a row returned by instruction_find
  */

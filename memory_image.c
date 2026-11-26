@@ -5,9 +5,9 @@
  * fill the whole memory, and the sum of the two counters is what is checked
  * against the limit (ALG-15). See memory_image.h for the contracts.
  */
-#include <stdlib.h>
-
 #include "memory_image.h"
+
+#include <stdlib.h>
 
 /* The two images of one source file. */
 struct MemoryImage

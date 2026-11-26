@@ -5,11 +5,11 @@
  * function print_diagnostic, so the layout of a diagnostic line is written
  * down exactly once.
  */
+#include "errors.h"
+
 #include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
-
-#include "errors.h"
 
 /* The severity words of SPEC ERR-R13 and ERR-R14. */
 #define SEVERITY_ERROR "error"
@@ -57,7 +57,7 @@ static void print_diagnostic(const char *base_name, int line,
 {
     print_prefix(base_name, line, severity);
     vprintf(format, arguments);
-    putchar('\n');
+    putchar(NEWLINE_CHARACTER);
 }
 
 /* Creates the context of one source file; see errors.h. */

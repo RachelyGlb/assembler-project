@@ -68,10 +68,13 @@ state of the build and of the test suite.
   is about 40 lines at most.
 - No magic numbers: a `#define` or an `enum` for every constant.
 - All error messages go through one function in the error module.
-- Fixed-size arrays are allowed only for the machine-code image. The symbol
-  table and the macro table are dynamically allocated. Check every `malloc`;
-  free everything on every path, including error paths and between input
-  files.
+- Fixed-size arrays are allowed only for the machine-code image. The rule
+  forbids a fixed capacity for anything the input controls: an array whose
+  size is a constant of the machine or of the C implementation, such as the
+  operand array of a statement or a local buffer for one base-4 number, is
+  allowed. The symbol table and the macro table are dynamically allocated.
+  Check every `malloc`; free everything on every path, including error paths
+  and between input files.
 - Documentation: a header comment in every file (the module's role) and above
   every function (what it does, parameters, return value), plus comments on
   non-obvious logic.

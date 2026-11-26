@@ -16,26 +16,20 @@
  * The .am file is written while the file is read and is removed at the end
  * if any error was found (MAC-23). See preassembler.h for the contract.
  */
+#include "preassembler.h"
+
 #include <ctype.h>
 #include <stdlib.h>
 #include <string.h>
 
 #include "instruction_table.h"
-#include "preassembler.h"
 #include "util.h"
 
 /* The character that a macro name may hold besides letters and digits. */
 #define MACRO_NAME_EXTRA_CHARACTER '_'
 
-/* Turns the value of a constant into a string literal, for messages. */
-#define STRINGIFY_TOKEN(token) #token
-#define STRINGIFY(constant) STRINGIFY_TOKEN(constant)
-
 /* The byte that a source line must not contain (SYN-26). */
 #define NUL_BYTE '\0'
-
-/* The mode in which the .am file is opened. */
-#define WRITE_MODE "w"
 
 /* The state of the scan with respect to macro definitions. */
 typedef enum
@@ -192,7 +186,7 @@ static LineInfo classify_line(const MacroTable *macros, const char *line)
 static Boolean write_line(Scan *scan, const char *text, int source_line)
 {
     fputs(text, scan->output);
-    putc('\n', scan->output);
+    putc(NEWLINE_CHARACTER, scan->output);
     return line_map_append(scan->lines, source_line);
 }
 

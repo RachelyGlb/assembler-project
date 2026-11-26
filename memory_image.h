@@ -6,8 +6,8 @@
  * starts at the load address 100 (ALG-2), and DC, which starts at 0. The
  * two images together may hold at most MAX_PROGRAM_WORDS words, because the
  * machine has 256 cells and the code is loaded at address 100 (ALG-15); a
- * word that does not fit is refused. This is the only module that uses
- * arrays of a fixed size (ALG-12).
+ * word that does not fit is refused. This is the only module that stores
+ * what the input controls in arrays of a fixed size (ALG-12).
  */
 #ifndef MEMORY_IMAGE_H
 #define MEMORY_IMAGE_H

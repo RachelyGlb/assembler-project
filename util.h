@@ -94,7 +94,8 @@ char *util_make_file_name(const char *base, const char *extension);
  *                        0 before the first call
  *   length               receives, with READ_LINE, the number of bytes of
  *                        the line, NUL bytes included; the line terminator
- *                        is not counted
+ *                        is not counted. A caller that does not need the
+ *                        length passes NULL.
  *   drop_carriage_return TRUE to remove a carriage return that stands
  *                        immediately before the newline (SYN-25); this is
  *                        how a source file is read. FALSE keeps it.

@@ -39,12 +39,6 @@ void line_map_destroy(LineMap *map);
 Boolean line_map_append(LineMap *map, int source_line);
 
 /*
- * Returns the number of .am lines recorded in the map.
- *   map  the map to ask
- */
-int line_map_count(const LineMap *map);
-
-/*
  * Translates a line number of the .am file.
  *   map           the map to ask
  *   expanded_line the line number in the .am file, counted from 1

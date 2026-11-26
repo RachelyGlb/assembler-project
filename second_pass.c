@@ -6,10 +6,11 @@
  * and follows the instruction counter with the same word counts that the
  * first pass used. See second_pass.h for the contract.
  */
+#include "second_pass.h"
+
 #include <stdlib.h>
 
 #include "encoder.h"
-#include "second_pass.h"
 #include "syntax.h"
 #include "util.h"
 
@@ -172,7 +173,6 @@ StageResult second_pass(FILE *am_file, const LineMap *lines,
     SecondPass pass;
     char *line = NULL;
     size_t capacity = 0;
-    size_t length; /* Not used: an .am line holds no NUL byte (SYN-26). */
     int am_line = FIRST_LINE_NUMBER;
     int errors_before = errors_count(errors);
     ReadStatus status;
@@ -183,12 +183,12 @@ StageResult second_pass(FILE *am_file, const LineMap *lines,
     pass.errors = errors;
     pass.address = FIRST_LOAD_ADDRESS;
     pass.no_memory = FALSE;
-    status = util_read_line(am_file, &line, &capacity, &length, FALSE);
+    status = util_read_line(am_file, &line, &capacity, NULL, FALSE);
     while (status == READ_LINE && !pass.no_memory)
     {
         pass.line_number = line_map_source_line(lines, am_line++);
         handle_line(&pass, line);
-        status = util_read_line(am_file, &line, &capacity, &length, FALSE);
+        status = util_read_line(am_file, &line, &capacity, NULL, FALSE);
     }
     free(line);
     if (status == READ_NO_MEMORY || pass.no_memory)

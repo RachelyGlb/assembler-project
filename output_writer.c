@@ -7,21 +7,16 @@
  * that cannot be written is in one place too. See output_writer.h for the
  * contract.
  */
+#include "output_writer.h"
+
 #include <stdio.h>
 #include <stdlib.h>
 
 #include "base4.h"
-#include "output_writer.h"
 #include "util.h"
-
-/* The mode in which an output file is opened. */
-#define WRITE_MODE "w"
 
 /* The layout of every output line: two fields, one TAB, one newline. */
 #define LINE_FORMAT "%s\t%s\n"
-
-/* The number of files that the writer can produce (OUT-1). */
-#define WRITTEN_FILE_COUNT 3
 
 /* What the walk over the symbol table needs to write the entries. */
 typedef struct
@@ -266,12 +261,12 @@ static StageResult write_externals(const char *base_name,
  */
 static void discard_outputs(const char *base_name)
 {
-    static const char *const extensions[WRITTEN_FILE_COUNT] = {
+    static const char *const extensions[] = {
         OBJECT_EXTENSION, ENTRIES_EXTENSION, EXTERNALS_EXTENSION};
     char *file_name;
-    int index;
+    size_t index;
 
-    for (index = 0; index < WRITTEN_FILE_COUNT; index++)
+    for (index = 0; index < ARRAY_LENGTH(extensions); index++)
     {
         file_name = util_make_file_name(base_name, extensions[index]);
         if (file_name != NULL)

@@ -42,12 +42,6 @@
 /* The line printed when the program is run without arguments (CLI-10). */
 #define USAGE_LINE "usage: assembler file1 [file2 ...]"
 
-/* The mode in which the source file and the .am file are opened. */
-#define READ_MODE "r"
-
-/* The number of output files that one source file can produce (OUT-1). */
-#define OUTPUT_FILE_COUNT 4
-
 /* Everything that belongs to the processing of one source file. */
 typedef struct
 {
@@ -73,13 +67,13 @@ typedef struct
  */
 static Boolean remove_stale_outputs(const char *base_name)
 {
-    static const char *const extensions[OUTPUT_FILE_COUNT] = {
+    static const char *const extensions[] = {
         EXPANDED_EXTENSION, OBJECT_EXTENSION, ENTRIES_EXTENSION,
         EXTERNALS_EXTENSION};
     char *file_name;
-    int index;
+    size_t index;
 
-    for (index = 0; index < OUTPUT_FILE_COUNT; index++)
+    for (index = 0; index < ARRAY_LENGTH(extensions); index++)
     {
         file_name = util_make_file_name(base_name, extensions[index]);
         if (file_name == NULL)

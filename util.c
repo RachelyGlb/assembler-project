@@ -3,19 +3,18 @@
  *
  * See util.h for the contracts.
  */
+#include "util.h"
+
 #include <ctype.h>
 #include <stdlib.h>
 #include <string.h>
-
-#include "util.h"
 
 /* The first size of a line buffer; it doubles whenever it is full. */
 #define LINE_BUFFER_INITIAL_SIZE 128
 #define LINE_BUFFER_GROWTH_FACTOR 2
 
-/* The two characters of a CR LF line ending (SYN-25). */
+/* The character that precedes the newline of a CR LF line ending (SYN-25). */
 #define CARRIAGE_RETURN '\r'
-#define NEWLINE '\n'
 
 /* Tells whether a character is white space; see util.h. */
 Boolean util_is_space(char character)
@@ -114,6 +113,20 @@ static Boolean reserve_character(char **buffer, size_t *capacity,
     return TRUE;
 }
 
+/*
+ * Hands the length of a line to a caller that asked for it.
+ *   length  where to store the length, or NULL when the caller has no use
+ *           for it
+ *   count   the number of bytes of the line
+ */
+static void store_length(size_t *length, size_t count)
+{
+    if (length != NULL)
+    {
+        *length = count;
+    }
+}
+
 /* Reads the next line of a text file into a growing buffer; see util.h. */
 ReadStatus util_read_line(FILE *file, char **buffer, size_t *capacity,
                           size_t *length, Boolean drop_carriage_return)
@@ -126,7 +139,7 @@ ReadStatus util_read_line(FILE *file, char **buffer, size_t *capacity,
         /* getc gives EOF for a failed read as well (CLI-12). */
         return ferror(file) ? READ_ERROR : READ_END;
     }
-    while (character != EOF && character != NEWLINE)
+    while (character != EOF && character != NEWLINE_CHARACTER)
     {
         if (!reserve_character(buffer, capacity, count))
         {
@@ -146,12 +159,12 @@ ReadStatus util_read_line(FILE *file, char **buffer, size_t *capacity,
         return READ_NO_MEMORY;
     }
     /* Only a carriage return that a newline follows is a line ending. */
-    if (drop_carriage_return && character == NEWLINE && count > 0 &&
+    if (drop_carriage_return && character == NEWLINE_CHARACTER && count > 0 &&
         (*buffer)[count - 1] == CARRIAGE_RETURN)
     {
         count--;
     }
     (*buffer)[count] = '\0';
-    *length = count;
+    store_length(length, count);
     return READ_LINE;
 }

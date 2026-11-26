@@ -5,9 +5,9 @@
  * minus one. The array doubles when it is full. See line_map.h for the
  * contracts.
  */
-#include <stdlib.h>
-
 #include "line_map.h"
+
+#include <stdlib.h>
 
 /* The first size of the array, and its growth factor. */
 #define MAP_INITIAL_CAPACITY 64
@@ -66,12 +66,6 @@ Boolean line_map_append(LineMap *map, int source_line)
     }
     map->source_lines[map->count++] = source_line;
     return TRUE;
-}
-
-/* Returns the number of .am lines recorded; see line_map.h. */
-int line_map_count(const LineMap *map)
-{
-    return map->count;
 }
 
 /* Translates a line number of the .am file; see line_map.h. */

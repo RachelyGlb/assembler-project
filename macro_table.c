@@ -6,10 +6,11 @@
  * a line is reached by its index in constant time. See macro_table.h for
  * the contracts.
  */
+#include "macro_table.h"
+
 #include <stdlib.h>
 #include <string.h>
 
-#include "macro_table.h"
 #include "util.h"
 
 /* The first size of the array of body lines, and its growth factor. */

@@ -3,9 +3,10 @@
  *
  * This header holds only plain definitions: the Boolean type, the limits and
  * addresses fixed by the specification, the file extensions, the keywords of
- * the macro language and the enumerations that several modules exchange. It
- * defines no object, no structure with behaviour and no function. Rule IDs in
- * the comments refer to docs/SPEC.md.
+ * the macro language, the enumerations that several modules exchange and the
+ * few small macros that more than one module needs. It defines no object, no
+ * structure with behaviour and no function. Rule IDs in the comments refer to
+ * docs/SPEC.md.
  */
 #ifndef COMMON_H
 #define COMMON_H
@@ -92,5 +93,19 @@ typedef enum
 
 /* The character that ends a label definition (LBL-4). */
 #define LABEL_END_CHARACTER ':'
+
+/* The character that ends a line of a text file. */
+#define NEWLINE_CHARACTER '\n'
+
+/* The modes in which a text file is opened for reading and for writing. */
+#define READ_MODE "r"
+#define WRITE_MODE "w"
+
+/* The number of elements of an array object. */
+#define ARRAY_LENGTH(array) (sizeof(array) / sizeof((array)[0]))
+
+/* Turns the value of a constant into a string literal, for messages. */
+#define STRINGIFY_TOKEN(token) #token
+#define STRINGIFY(constant) STRINGIFY_TOKEN(constant)
 
 #endif /* COMMON_H */
