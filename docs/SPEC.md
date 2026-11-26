@@ -1,8 +1,10 @@
 # SPEC: two-pass assembler for the 10-bit imaginary machine
 
 This file is the verified digest of the course documents for Assignment 14 of
-course 20465. Every rule has a stable ID and ends with its source. Code, tests
-and audits cite the rule IDs.
+course 20465, together with the decisions of the project owner. Every rule has
+a stable ID and ends with its source. Code, tests and audits cite the rule
+IDs. The file is binding: where the sources allow several behaviours, the
+owner's decision recorded here fixes one of them.
 
 ## 1. Sources and precedence
 
@@ -12,23 +14,33 @@ and audits cite the rule IDs.
 | `[correction N]` | `docs/corrections.pdf` / `docs/corrections.txt`, the official corrections sheet, items 1 to 4 | Overrides the booklet. |
 | `[forum: <thread title>, <date>]` | `docs/forum.txt`, the course forum Q&A (English; extracted from `docs/Task_14.pdf`, 90 pages) | Highest priority. Only posts marked "Posted by moderator" are rulings; the date is the date of the moderator post (dd/mm/yyyy). Student posts are never rulings; where one is mentioned it is labelled "student post, not a ruling". Names of students are not reproduced here. |
 | `[inferred]` | A conclusion drawn by the spec author | Always accompanied by its reasoning. Not an official statement. |
+| `[owner decision, 2026-11-26]` | A decision of the project owner | Used only where the sources leave a choice to the implementer or are silent. It is always followed by the source that allows the chosen option, or by the statement that the sources are silent. It is binding for code and tests. |
 
 Precedence, highest first: forum moderator rulings, corrections sheet,
 booklet. A moderator ruling overrides the corrections sheet and the booklet;
-every rule below that is changed by the forum says so.
+every rule below that is changed by the forum says so. An owner decision never
+overrides a source: it selects one of the behaviours the sources allow, or
+fills a gap. If a later reading of the sources shows a conflict with an owner
+decision, the conflict is reported to the owner and not resolved silently.
 
 Notes on the forum text:
 
-- The whole forum text was read. `docs/forum.txt` contains the same set of
-  threads twice (the first copy is cut short, the second copy is complete);
-  the two copies agree. Unclear passages were checked against the PDF.
+- The whole forum text was read. `docs/forum.txt` holds two extractions of
+  the forum, and **the two halves differ**. Lines 1 to 2545 are a copy that is
+  cut short: it stops in the thread "Matrix Labels". Lines 2546 to 5304 are
+  the complete copy. Where the two overlap they agree, but several dozen
+  threads, among them most of the rulings dated 03/06/2025 to 25/06/2025,
+  exist only in lines 4639 to 5304. A search must therefore always cover the
+  whole file. Unclear passages were checked against the PDF.
 - The corrections sheet is also posted in the forum by the moderator.
   [forum: Clarifications and Corrections, 14/07/2025]
 - Several moderator answers say only "an answer exists in the forum" or "at
   your discretion". The first kind adds nothing; the second kind is recorded
-  in section 2.15 as a choice left to the implementer.
-- When two moderator posts disagree, both are cited and the later one is
-  applied; the disagreement is also listed in section 6.
+  in section 2.15 as a choice left to the implementer, together with the
+  option the owner chose.
+- When two moderator posts disagree, both are cited. The only such case is the
+  duplicate macro name (MAC-15, MAC-28); it is settled by an owner decision
+  that satisfies every one of the posts.
 - Seven rulings were first reported by the owner from memory. Section 2.13
   records how each was verified against the forum text.
 
@@ -239,8 +251,20 @@ file. No web source and no other solution was used.
   reported, and the assembler continues to look for errors in the rest of the
   file. [forum: Line with More Than 80 Characters: Does the Assembler Ignore
   the Line and Continue or Stop?, 14/07/2025; Should we continue checking when
-  the line length is greater than 80 characters?, 22/07/2025] The stage that
-  performs the check is the implementer's choice (section 2.15).
+  the line length is greater than 80 characters?, 22/07/2025] The sources
+  leave the stage that performs the check to the implementer; SYN-2b fixes
+  it.
+- **SYN-2b** The 80-character limit is checked by the pre-assembler, on every
+  line of the `.as` file. A longer line is a pre-assembler error (ERR-10): it
+  is reported, the pre-assembler keeps scanning the rest of the file for
+  further pre-assembler errors (MAC-22), no `.am` file is left and the passes
+  are not run for that file (MAC-23). [owner decision, 2026-11-26] (choice
+  C-2), allowed by [forum: Character Overflow Error, 09/06/2025; Checking Line
+  Length Validity, 22/06/2025], both answered "at your discretion".
+  [inferred] The limit applies to every line whatever its kind (comment
+  lines, lines of a macro body), because SYN-2 speaks of "a line of the
+  source file" with no exception. Consequence: errors that only the passes
+  could find in such a file are not reported in the same run.
 
 ### 2.6 Directives (DIR)
 
@@ -315,7 +339,8 @@ file. No web source and no other solution was used.
   and the assembler ignores it; the assembler may print a warning.
   [booklet p.27] (The forum adds nothing: asked what such a label means, the
   moderator pointed back to the booklet text. [forum: Questions I didn't find
-  answers to in the booklet., 22/07/2025])
+  answers to in the booklet., 22/07/2025]) Whether this project prints the
+  warning is still undecided (Q-27).
 - **DIR-19** `.entry` is skipped in the first pass and handled in the second
   pass: the attribute "entry" is added to the symbol. If the symbol is not in
   the symbol table, an error is reported. [booklet p.35 step 9, p.36 steps
@@ -330,7 +355,7 @@ file. No web source and no other solution was used.
   value 0 and the attribute "external". [booklet p.35 step 10, p.41]
 - **DIR-22** A label defined at the start of a `.extern` line is meaningless
   and the assembler ignores it; the assembler may print a warning.
-  [booklet p.28]
+  [booklet p.28] See Q-27.
 - **DIR-23** The same label must not be declared both `.entry` and `.extern`
   in the same file. This is an error and must be reported. [booklet p.28]
 
@@ -370,6 +395,31 @@ Forum additions to directives
   zero word in memory. [forum: Questions I didn't find answers to in the
   booklet., 22/07/2025]
 
+Owner decisions on directives
+
+- **DIR-32** `.string ""` is legal. It allocates exactly one word, which holds
+  0 (the terminator of DIR-10), and advances the data counter by one.
+  [owner decision, 2026-11-26] (Q-17). The sources are silent: SYN-22 defines
+  a string as "a sequence" of characters without a minimum length, and DIR-10
+  and DIR-31 always add the terminating word.
+- **DIR-33** A dimension of `.mat` is a string of decimal digits with no sign,
+  and its value must be at least 1. A dimension of 0, a negative number, or a
+  number written with a sign (`+2`, `-2`) is an error (ERR-44). Leading zeros
+  are digits and are legal. Whitespace between the last `]` and the first
+  initial value is optional: `.mat [2][2]1,2,3,4` is legal.
+  [owner decision, 2026-11-26] (Q-7). The sources are silent on all four
+  points; DIR-26 says only that a dimension is a number.
+- **DIR-34** Declaring the same symbol more than once with `.extern`, or more
+  than once with `.entry`, is accepted silently: no error and no warning. The
+  symbol is in the symbol table once, and an entry symbol appears exactly once
+  in the `.ent` file (OUT-8). [owner decision, 2026-11-26] (Q-8), implied by
+  the skeleton algorithms, which test for an existing symbol when a label is
+  defined (p.35 steps 6 and 11) but not at `.extern` (p.35 step 10), and
+  which merely add an attribute at `.entry` (p.36 step 5). [booklet p.35,
+  p.36] No forum post addresses the repetition. A symbol that is both
+  defined in the file and declared `.extern` remains an error (DIR-30), and so
+  does a symbol declared both `.entry` and `.extern` (DIR-23).
+
 ### 2.7 Labels and symbols (LBL)
 
 - **LBL-1** A label is a symbol defined at the start of an instruction
@@ -390,9 +440,10 @@ Forum additions to directives
   [booklet p.29]
 - **LBL-7** Reserved words of the assembly language cannot be label names: the
   name of an operation, the name of a directive, the name of a register.
-  [booklet p.29]
+  [booklet p.29] The complete list used by this project is LBL-20.
 - **LBL-8** The same symbol must not serve both as a label and as a macro
-  name. The assembler must check this. [booklet p.29]
+  name. The assembler must check this. [booklet p.29] How and where the check
+  is made is LBL-21.
 - **LBL-9** A label defined on a `.data`, `.string` or `.mat` line gets the
   current value of the data counter (DC). A label defined on an instruction
   line gets the current value of the instruction counter (IC), that is the
@@ -438,6 +489,46 @@ Forum additions to labels
   Instruction/Directive?, 03/06/2025] The booklet is silent.
 - **LBL-19** No maximum number of labels may be assumed. [forum: Label and
   Macro Limits, 02/07/2025]
+
+Owner decisions on labels
+
+- **LBL-20** The reserved words are exactly these 31 names, compared
+  case-sensitively: the 16 operation names of section 3; the five directive
+  names written without the dot, `data`, `string`, `mat`, `entry`, `extern`;
+  the eight register names `r0` to `r7`; `mcro` and `mcroend`. None of them
+  may be a label name (ERR-13) or a macro name (MAC-33, ERR-2). `PSW` and `PC`
+  are **not** reserved and are legal label and macro names. Names such as `r8`
+  or `r20` are not reserved (LBL-16). [owner decision, 2026-11-26] (Q-9).
+  Sources: operation, directive and register names [booklet p.29]; `mcro` and
+  `mcroend` [forum: Reserved Words for Label Names, 03/06/2025]. [inferred]
+  The booklet's "name of a directive" can only mean the name without the dot,
+  because a name with a dot is never a syntactically legal label (LBL-2).
+  The sources say nothing about `PSW` and `PC`, which never appear in the
+  assembly language (M-3, M-7).
+- **LBL-21** A label whose name equals the name of a macro defined in the same
+  file is an error (ERR-14), wherever the label definition and the macro
+  definition stand relative to each other. The error is detected in the first
+  pass, which consults the macro table built by the pre-assembler; the macro
+  table of a file therefore lives until the first pass of that file has
+  ended. The error is reported on the line of the label definition.
+  [owner decision, 2026-11-26] (Q-11). The check itself is mandatory by
+  [booklet p.29] and [forum: Should we check if a label name is not a macro
+  name or is it considered a given?, 22/07/2025]; the sources do not name the
+  stage.
+- **LBL-22** A label definition with nothing after the colon (only whitespace
+  up to the end of the line) is an error (ERR-45). [owner decision,
+  2026-11-26] (Q-14), implied by the booklet: a label is defined "at the
+  start of" an instruction statement or of a `.data`, `.string` or `.mat`
+  directive (p.28, p.29), an empty statement holds only whitespace (p.25),
+  and the skeleton first pass has no branch for a symbol followed by nothing
+  (p.35 steps 3 to 11). No forum post addresses it.
+- **LBL-23** A syntactically legal, non-reserved label on a line that has
+  another error is still entered into the symbol table (with the attribute
+  the statement would have given it when the statement kind is recognisable,
+  otherwise "code"), so that the line does not cause follow-on "undefined
+  symbol" messages elsewhere. Its value does not matter, because no output
+  is written for a file with errors (ERR-R6). [owner decision, 2026-11-26]
+  (Q-14). The sources are silent.
 
 ### 2.8 Syntax details (SYN, part 2)
 
@@ -495,10 +586,16 @@ Numbers and strings
   [booklet p.21]. The assembler must check that a number does not overflow
   its field; an overflow is an error. This applies to `.data` values and to
   immediate operands. [forum: Maximum size of numbers using 2's complement
-  method, 14/07/2025] The moderator gave no numeric range. [inferred] In two's
-  complement the widths hold -128..127 for an immediate operand and -512..511
-  for a `.data` / `.mat` value. Whether the unsigned upper halves (128..255,
-  512..1023) are also accepted is Q-6.
+  method, 14/07/2025] The moderator gave no numeric range. The ranges are
+  signed only: an immediate operand must be in -128..127, and a `.data` or
+  `.mat` value must be in -512..511. Any value outside its range, including
+  the unsigned upper halves 128..255 and 512..1023, is an error (ERR-39).
+  [owner decision, 2026-11-26] (Q-6), implied by the sources: the machine
+  works with positive and negative integers in two's complement [booklet
+  p.19], an immediate operand is a number represented in 8 bits [booklet
+  p.21], a data word has 10 bits [booklet p.26], and overflow must be checked
+  (the ruling above). (A student post in the same thread argues for
+  -128..127; it is not a ruling.)
 - **SYN-22** A legal string is a sequence of visible (printable) ASCII
   characters enclosed in double quotes. The quotes are not part of the string.
   Example: `"hello world"`. [booklet p.29] Forum refinements: the legal
@@ -509,7 +606,8 @@ Numbers and strings
   last quotation mark). [forum: What is Considered a Valid String for
   .string?, 22/06/2025 and 25/06/2025] The quotation mark is the ASCII
   character; the typographic quotes printed in the booklet are an artefact.
-  [forum: What is Considered a Valid String for .string?, 23/06/2025]
+  [forum: What is Considered a Valid String for .string?, 23/06/2025] The
+  empty string `""` is legal (DIR-32).
 - **SYN-23** A matrix operand must have a label before the brackets. An
   operand that starts with a bracket (`[r2][r7]`) is an error that must be
   reported; it may not be assumed away. [forum: Matrix definition, 17/07/2025]
@@ -534,7 +632,8 @@ Numbers and strings
   assembler is to translate". [booklet p.25, p.29]
 - **MAC-5** In the expanded file each macro call is replaced by the body
   lines, and the definition lines (`mcro` line, body, `mcroend` line) are
-  removed. All other lines are copied unchanged. [booklet p.30, p.31]
+  removed. All other lines are copied unchanged. [booklet p.30, p.31] The
+  exact content of the `.am` file is fixed by MAC-29.
 - **MAC-6** Assumption, no check needed: there are no nested macro
   definitions. [booklet p.25]
 - **MAC-7** Assumption, no check needed: every `mcro` line has a closing
@@ -560,17 +659,27 @@ Numbers and strings
 - **MAC-14** The pre-assembler writes the expanded program to a new file with
   the suffix `.am`. If the source has no macros, the `.am` file is identical
   to the `.as` file. [booklet p.25, p.29-30, p.39]
-- **MAC-15** There is no need to check for duplicate macro names.
-  [forum: Macro name, 22/07/2025] The booklet is silent. **Conflict inside the
-  forum:** an earlier moderator post answered "Yes" to "should an error be
-  output for several macros with the same name?" [forum: Do We Need to Check
-  Multiple Definitions of the Same Macro?, 08/06/2025]. The later post is
-  applied here; see Q-21.
+- **MAC-15** Duplicate macro names in the forum. The booklet is silent. Four
+  moderator posts bear on the question and they do not agree: (1) "Yes" to
+  "if multiple macros with the same name are defined, should an error be
+  output?" [forum: Do We Need to Check Multiple Definitions of the Same
+  Macro?, 08/06/2025]; (2) "Of course" to a question asking whether the
+  validity of the macro name, the extra characters on the opening and closing
+  lines and "multiple macros with the same name" are checked in the
+  pre-assembler [forum: Whitespace in Macros, 18/06/2025]; (3) "You can
+  report an invalid macro name (with the line number in addition)" to a
+  question that lists "a name that repeats itself" among the kinds of invalid
+  macro name [forum: Error Reporting, 25/06/2025]; (4) "There is no need to
+  check for duplicate macro names" [forum: Macro name, 22/07/2025]. Posts 1
+  to 3 require or allow the report; post 4 makes it optional and forbids
+  nothing. This rule records the sources only; the behaviour of this project
+  is MAC-28.
 - **MAC-17** A macro name follows the rules of a label name (starts with a
   letter, then letters and digits), and in addition the character `_` is
   legal in a macro name. [forum: Valid Macro Names, 03/06/2025] Its length is
   limited like a label name, 30 characters. [forum: Macro name, 22/07/2025]
-  The booklet gives no syntax for macro names.
+  The booklet gives no syntax for macro names. The complete rule for this
+  project is MAC-33.
 - **MAC-18** The pre-assembler does perform the checks of MAC-9 and MAC-10
   (valid macro name; no extra characters on the `mcro` and `mcroend` lines).
   The booklet's sentence on p.34, "the pre-assembler stage contains no error
@@ -584,8 +693,8 @@ Numbers and strings
   [forum: Additional Characters Before mcroend, 02/07/2025]
 - **MAC-21** A label cannot appear on the same line as `mcro`, `mcroend` or a
   macro call. [forum: Label at the beginning/end of macro definition,
-  22/07/2025] (The one-word answer does not say whether this is an assumption
-  or an error to report; see Q-22.)
+  22/07/2025] (The one-word answer "No" does not say whether this is an
+  assumption or an error to report; MAC-34 makes it an error.)
 - **MAC-22** The pre-assembler must find all errors of the macro expansion
   stage in the file; it does not stop at the first one. [forum: Can Macro
   Expansion be Stopped at the First Error or Must the Entire File be
@@ -602,7 +711,8 @@ Numbers and strings
   the source file; keeping them is equally acceptable. [forum: Handling Empty
   Lines and Comment Lines, 09/06/2025; Should the pre-assembler also copy
   empty lines or can it ignore and delete them?, 17/07/2025] This relaxes the
-  booklet's "identical to the source file" (MAC-14).
+  booklet's "identical to the source file" (MAC-14). This project keeps them
+  (MAC-29).
 - **MAC-26** A pre-assembler error message may be general, for example
   "invalid macro name", as long as it carries the line number.
   [forum: Error Reporting, 25/06/2025]
@@ -625,6 +735,75 @@ Numbers and strings
      go to 6.
   8. Turn off the "in macro" flag and go to 1.
   9. End: save the expanded file.
+
+Owner decisions on macros and the pre-assembler
+
+- **MAC-28** A second definition of a macro name that is already in the macro
+  table is an error reported by the pre-assembler (ERR-8), on the `mcro` line
+  of the second definition. [owner decision, 2026-11-26] (Q-21). Reporting
+  satisfies all four moderator posts quoted in MAC-15: it is required by
+  [forum: Do We Need to Check Multiple Definitions of the Same Macro?,
+  08/06/2025] and [forum: Whitespace in Macros, 18/06/2025], offered by
+  [forum: Error Reporting, 25/06/2025], and not forbidden by [forum: Macro
+  name, 22/07/2025].
+- **MAC-29** Content of the `.am` file. Every line of the `.as` file that is
+  not part of a macro definition and is not a macro call is copied exactly as
+  it is, character for character; this includes empty lines and comment
+  lines. The lines of a macro definition (the `mcro` line, the body lines and
+  the `mcroend` line) are removed. Each macro call line is replaced by the
+  body lines of the macro, each copied exactly as it was written in the
+  definition. Consequently a source file without macros gives an `.am` file
+  identical to the `.as` file, as the booklet says (MAC-14). [owner decision,
+  2026-11-26] (choice C-3), allowed by [forum: Handling Empty Lines and
+  Comment Lines, 09/06/2025; Should the pre-assembler also copy empty lines
+  or can it ignore and delete them?, 17/07/2025] ("it is possible to create
+  an .am file without" them; "you can delete") and matching [booklet p.30,
+  p.39]. Empty lines and comment lines inside a macro body are body lines:
+  they are removed with the definition and reappear at every call.
+  [inferred] from MAC-24: the pre-assembler does not interpret the body.
+- **MAC-30** A macro call line is a line whose first field is the name of a
+  macro in the macro table (MAC-16 step 2). Any non-whitespace text after the
+  macro name on that line is an error reported by the pre-assembler (ERR-7).
+  Whitespace before and after the name is allowed. [owner decision,
+  2026-11-26] (choice C-4), the option the moderator called "more logical"
+  [forum: Macro Mention with Additional Text, 14/07/2025].
+- **MAC-31** Non-whitespace text after the word `mcroend` is an error
+  reported by the pre-assembler (ERR-4), and the macro definition is closed
+  at that line: the lines that follow are ordinary lines again. [owner
+  decision, 2026-11-26] (choice C-5). The report is required by MAC-10; the
+  closing is left "at your discretion" by [forum: Redundant Text After
+  Command, 14/07/2025].
+- **MAC-32** Macro expansion is not nested. A line inside a macro body is
+  stored and later copied as it is, even when its first field is the name of
+  a macro defined earlier; it is not expanded. In the `.am` file such a line
+  is an ordinary line, and the first pass reports it as an unknown operation
+  (ERR-17). [owner decision, 2026-11-26] (Q-10), implied by the sources: the
+  skeleton algorithm stores body lines without looking at them [booklet p.31
+  step 6], and the body is not examined during macro expansion [forum: Must a
+  Macro Contain a Sequence of Instructions and/or Directives?, 25/06/2025].
+- **MAC-33** A legal macro name starts with an alphabetic letter; the
+  characters after the first are letters, digits and `_`; `_` is not allowed
+  as the first character; the length is at most 30 characters; and the name
+  is not a reserved word (LBL-20), which excludes operation names, directive
+  names, register names, `mcro` and `mcroend`. A violation is a
+  pre-assembler error (ERR-2, ERR-6). [owner decision, 2026-11-26] (Q-9,
+  Q-11), implied by "a macro name must be valid like a label name; the
+  character `_` is also valid" [forum: Valid Macro Names, 03/06/2025]
+  together with LBL-2 and LBL-7 [booklet p.28, p.29] and MAC-9 [booklet
+  p.25]. The clash between a macro name and a label name is handled by
+  LBL-21, not by the pre-assembler.
+- **MAC-34** A label definition in front of `mcro`, in front of `mcroend`, or
+  in front of a macro call is an error (ERR-9). [owner decision, 2026-11-26]
+  (Q-22), the stricter reading of the moderator's "No" in [forum: Label at
+  the beginning/end of macro definition, 22/07/2025]. The stage that reports
+  it is not yet decided (Q-28).
+- **MAC-35** The pre-assembler hands the passes, together with the expanded
+  text, a line map: for every line of the `.am` file, the number of the line
+  of the `.as` file it was copied from. For a line that comes from a macro
+  body, that number is the number of the body line inside the macro
+  definition, not the number of the call line. The map exists only in memory;
+  it is not written to any file and does not change the `.am` file.
+  [owner decision, 2026-11-26] (choice C-1); see ERR-R12 and section 2.14.
 
 ### 2.10 Two-pass algorithm (ALG)
 
@@ -752,7 +931,8 @@ Numbers and strings
   [booklet p.34] The number may be the line number in the original `.as` file
   or the line number in the expanded `.am` file; both are accepted.
   [forum: Printing Errors with Line Number in Case of Syntax Error in File,
-  02/07/2025] See section 2.14.
+  02/07/2025] This project always reports the `.as` line (ERR-R12, section
+  2.14).
 - **ERR-R4** The assembler does not stop after the first error. It continues
   over the input to find further errors, if any. It must detect and report all
   erroneous lines of the input. [booklet p.34, p.46]
@@ -766,7 +946,8 @@ Numbers and strings
   It requires only the line number (ERR-R3) and enough detail to locate the
   error (ERR-R5). [inferred] Since several files can be processed in one run
   (CLI-1), printing the file name is the natural way to satisfy "where each
-  error is", but it is not a stated rule. See Q-3.
+  error is", but it is not a stated rule of the sources. This project prints
+  it (ERR-R13).
 - **ERR-R9** One error message per input line is sufficient; every line of
   the file must still be examined. [forum: Error reporting, 22/07/2025] The
   booklet is silent and compatible (p.34, p.46).
@@ -778,6 +959,34 @@ Numbers and strings
 - **ERR-R11** Every file opened while processing a source file is closed when
   the processing of that file ends. [forum: A Few Questions That Came Up,
   22/07/2025]
+- **ERR-R12** The line number in every message, from every stage, is the
+  number of the line in the original `.as` file, counted from 1. The first
+  and second pass obtain it from the line map of MAC-35. For a line that
+  comes from a macro body, the number reported is that of the body line
+  inside the macro definition, which is the place the author has to fix. A
+  macro that is called N times can therefore produce the same message, with
+  the same line number, N times; this repetition is accepted. [owner
+  decision, 2026-11-26] (choice C-1), allowed by [forum: Printing Errors with
+  Line Number in Case of Syntax Error in File, 02/07/2025]; the repetition is
+  accepted by [booklet p.34] (MAC-13).
+- **ERR-R13** Message format. Every error is one line on `stdout` of the form
+  `<name>.as:<line>: error: <text>`, where `<name>` is the command-line
+  argument exactly as given (CLI-8) and `<line>` is the decimal line number
+  of ERR-R12 with no padding. There is no space before the line number, and
+  exactly one space after the colon that follows the line number and after
+  the colon that follows `error`. An error that has no line (for example a
+  file that cannot be opened) has the form `<name>.as: error: <text>`. The
+  `<text>` strings are not fixed by this file; they must be informative
+  (ERR-R5), contain no newline, and may change without a change to SPEC.
+  Tests compare the file name, the line number and the severity of each
+  message, never its wording. [owner decision, 2026-11-26] (Q-3). The
+  sources fix only `stdout` and the line number [booklet p.34] and give no
+  format.
+- **ERR-R14** A warning has the same format as an error with the word
+  `warning:` in place of `error:`. A warning is not an error: it does not
+  suppress the output files and does not change the exit status (CLI-9).
+  [owner decision, 2026-11-26] (Q-3). Which warnings, if any, the assembler
+  prints is still undecided (Q-27).
 
 ### 2.12 Command line (CLI) and output files (OUT)
 
@@ -799,6 +1008,22 @@ Numbers and strings
   22/06/2025]
 - **CLI-7** There is no limit on the number of input files. [forum: Limit on
   Number of Input Files, 14/07/2025]
+- **CLI-8** A command-line argument is always taken as a name without the
+  extension; the assembler never strips or recognises a suffix. The argument
+  `x.as` therefore makes the assembler try to open `x.as.as` and, when that
+  file does not exist, report that it cannot be opened (ERR-1), in the form
+  `x.as.as: error: <text>` (ERR-R13 with `<name>` = `x.as`). [owner decision,
+  2026-11-26] (Q-16), following "the input is the file name without the
+  extension; you can try to open a file with the standard extension and
+  report an error if the file does not open" [forum: Input File Name,
+  22/06/2025].
+- **CLI-9** Exit status. The program exits with status 0 if and only if every
+  file named on the command line was assembled without errors; this includes
+  a run with no file arguments (CLI-5). In every other case, that is when at
+  least one file could not be opened or had an error in any stage, or when
+  the program stopped on an allocation failure (ERR-R10), the status is 1.
+  Warnings do not affect the status. [owner decision, 2026-11-26] (Q-16).
+  The sources are silent on the exit status.
 - **OUT-1** Output file names are the input name as given on the command line
   plus a suffix: `.am` (after macro expansion), `.ob` (object), `.ent`
   (entries), `.ext` (externals). [booklet p.39, p.46]
@@ -822,23 +1047,27 @@ Numbers and strings
   of the header numbers. Asked about alignment, separators and the first line,
   the moderator answered only that the example in the booklet shows the
   format. [forum: Output File Format, 08/06/2025] So the example is the
-  authority for the widths; the separator characters cannot be read from a PDF
-  and stay open (Q-4). (The same widths, with the reasoning "the header is
-  just a number, an address needs 8 bits, a word 10 bits", appear in student
-  posts, not rulings.)
+  authority for the widths; the separator characters cannot be read from a
+  PDF, and OUT-13 fixes them. (The same widths, with the reasoning "the
+  header is just a number, an address needs 8 bits, a word 10 bits", appear
+  in student posts, not rulings.)
 - **OUT-6** The column heading "Base 4 address / Base 4 code" printed above
   the example is not part of the file. [booklet p.45]
 - **OUT-7** Lines of `.ob` after the first are in ascending address order,
   starting at 100, code words then data words. [booklet p.42, p.45]
 - **OUT-8** The `.ent` file is made of text lines. Each line has the name of a
   symbol declared as entry and its value as found in the symbol table (after
-  ALG-6), in unique base 4. Example: `LOOP bccd`, `LENGTH caab`.
-  [booklet p.42, p.45]
+  ALG-6), in unique base 4. Example (the gap is one TAB, OUT-13): `LOOP bccd`,
+  `LENGTH caab`.
+  [booklet p.42, p.45] Each entry symbol appears once, however many `.entry`
+  directives name it (DIR-34). The value is written as an address, four
+  base-4 digits (OUT-13).
 - **OUT-9** The `.ext` file is made of text lines. Each line has the name of a
   symbol declared external and the address, in unique base 4, of a machine
   word that encodes an operand referring to that symbol. Every reference gets
   its own line, so a symbol used several times appears on several lines.
-  Example: `W bcbd`, `W bcda`, `L3 bdca`. [booklet p.39, p.42, p.45]
+  Example (the gap is one TAB, OUT-13): `W bcbd`, `W bcda`, `L3 bdca`.
+  [booklet p.39, p.42, p.45]
 - **OUT-10** The order of the lines in `.ent` and `.ext` does not matter.
   [booklet p.46]
 - **OUT-11** The `.am` file is produced by the pre-assembler (MAC-14). It is
@@ -850,6 +1079,23 @@ Numbers and strings
 - **OUT-12** `.ent` and `.ext` files left over from an earlier run need not be
   deleted when the current run has nothing to write to them; they are simply
   not recreated. [forum: Deleting previous .ent and .ext files, 17/07/2025]
+  Whether this project removes stale output files is undecided (Q-31).
+- **OUT-13** Exact layout of `.ob`, `.ent` and `.ext`. Every line has exactly
+  two fields separated by exactly one TAB character (ASCII 9). There is no
+  indentation, no trailing whitespace and no blank line, and every line,
+  including the last, ends with one newline character (ASCII 10). The first
+  line of `.ob` is `<code length><TAB><data length>`, each in unique base 4
+  with no leading `a`; a length of zero is printed as the single digit `a`.
+  Every other line of `.ob` is `<address><TAB><word>`: the address as exactly
+  four base-4 digits and the word as exactly five (OUT-5). A line of `.ent`
+  is `<symbol><TAB><address>` and a line of `.ext` is
+  `<symbol><TAB><address>`, the address as exactly four base-4 digits.
+  [owner decision, 2026-11-26] (Q-4). The widths are those of the example
+  [booklet p.45], to which the moderator refers [forum: Output File Format,
+  08/06/2025]; the sources do not define the separator, the indentation of
+  the first line as printed on p.45, or the form of a zero length.
+  [inferred] A file with `.extern` directives but no reference to any
+  external symbol gets no `.ext` file, because it would be empty (OUT-2).
 
 ### 2.13 Rulings first reported by the owner, verified against the forum
 
@@ -863,13 +1109,16 @@ available. Each was then looked up in `docs/forum.txt`.
 | `.mat` symbols are "data" symbols. | Found. | [forum: Symbol characterization in the symbol table, 22/07/2025] | DIR-16 | Agrees (p.35 steps 5-6, p.41); the p.37 table is wrong. |
 | One error message per input line is enough. | Found. | [forum: Error reporting, 22/07/2025] | ERR-R9 | Silent, compatible. |
 | On memory allocation failure, free everything and exit. | Found, three times; the whole program exits, not only the current file. | [forum: Linked List for Macros, 17/06/2025; Memory Allocation Errors, 14/07/2025; Memory allocation error, 22/07/2025] | ERR-R10 | Silent. |
-| No need to check for duplicate macro names. | Found, but an earlier moderator post says the opposite. | [forum: Macro name, 22/07/2025] against [forum: Do We Need to Check Multiple Definitions of the Same Macro?, 08/06/2025] | MAC-15, Q-21 | Silent. |
+| No need to check for duplicate macro names. | Found, but three other moderator posts require or allow the report. The owner decided to report an error, which satisfies all four. | [forum: Macro name, 22/07/2025] against [forum: Do We Need to Check Multiple Definitions of the Same Macro?, 08/06/2025; Whitespace in Macros, 18/06/2025; Error Reporting, 25/06/2025] | MAC-15, MAC-28 | Silent. |
 | A label in front of `.entry` or `.extern` is ignored (a warning is allowed). | **Not found in forum** as a ruling. The only related moderator post refers the asker back to the booklet. The rule itself stands on the booklet. | [forum: Questions I didn't find answers to in the booklet., 22/07/2025] (reference to the booklet only) | DIR-18, DIR-22 | States it (p.27, p.28). |
 
 ### 2.14 Which file does the line number in an error message refer to?
 
-**Answer: either. The forum settles it: the line number may be the one in the
-original `.as` file or the one in the expanded `.am` file.**
+**Answer for this project: always the original `.as` file (ERR-R12).**
+[owner decision, 2026-11-26] (choice C-1)
+
+What the sources allow: either. The forum settles that the line number may be
+the one in the original `.as` file or the one in the expanded `.am` file.
 [forum: Printing Errors with Line Number in Case of Syntax Error in File,
 02/07/2025]
 
@@ -881,13 +1130,24 @@ the forum". [forum: Error Line Number in Assembler, 14/07/2025]
 
 Consequences:
 
-- An error found by the first or second pass may report the `.am` line number
-  or the `.as` line number. The project must pick one and use it consistently;
-  this choice belongs to the owner (section 2.15, item C-1).
+- An error found by the first or second pass reports the `.as` line number.
+  Macro expansion moves lines, so the passes cannot count lines of the `.am`
+  file; they use the line map that the pre-assembler builds (MAC-35).
+- An error on a line that comes from a macro body reports the `.as` line of
+  that body line inside the macro definition. If the macro is called several
+  times, the message is printed once per call, each time with the same line
+  number (ERR-R12; the booklet accepts the repetition, p.34).
 - An error found by the pre-assembler can only refer to the `.as` file,
   because no `.am` file exists for a file that fails there (MAC-23).
   [inferred]
-- Tests must not assume a particular choice unless the owner fixes it.
+- Tests assert the `.as` line number of every message.
+
+Worked example. In the `.as` file of section 4.1 the macro body line
+`mov M1[r3][r3],r3` is line 6 and the call `a_mc` is line 12. In the `.am`
+file the same text is line 8. An error on that line would be reported as
+`<name>.as:6: error: ...`; with a second call of `a_mc` it would be printed
+twice, both times with line 6. The line `END: stop` is line 13 of the `.as`
+file and line 10 of the `.am` file; an error there is reported with line 13.
 
 For the record, the booklet alone is ambiguous. The sentences that bear on it
 (translated):
@@ -913,20 +1173,22 @@ or `.am` in connection with the line number.
 ### 2.15 Choices the forum leaves to the implementer, and non-behavioural rulings
 
 Choices ("at your discretion"). None of these is an open question about the
-sources: the sources allow every option listed. Each needs a project decision
-so that tests can be written.
+sources: the sources allow every option listed. C-1 to C-5 change what a test
+can observe, and the owner decided each of them on 2026-11-26; the chosen
+option is binding. C-6 to C-9 cannot be observed by a test (ERR-R13 leaves
+the wording of messages free) and stay implementation choices.
 
-| ID | Choice | Options allowed | Source |
-|---|---|---|---|
-| C-1 | Line number base in pass error messages. | `.as` line or `.am` line. | [forum: Printing Errors with Line Number in Case of Syntax Error in File, 02/07/2025] |
-| C-2 | Stage that checks the 80-character limit. | Pre-assembler or first pass. | [forum: Character Overflow Error, 09/06/2025; Checking Line Length Validity, 22/06/2025] |
-| C-3 | Empty lines and comment lines in `.am`. | Keep them or delete them. | [forum: Handling Empty Lines and Comment Lines, 09/06/2025; Should the pre-assembler also copy empty lines or can it ignore and delete them?, 17/07/2025] |
-| C-4 | Extra text after a macro name on a call line. | Report in the pre-assembler (called "more logical" by the moderator) or leave the line for the first pass. | [forum: Macro Mention with Additional Text, 14/07/2025] |
-| C-5 | After reporting extra text on a `mcroend` line: close the macro or ignore the line. | Either. | [forum: Redundant Text After Command, 14/07/2025] |
-| C-6 | Where the encoding is done. | First and second pass as in the skeleton, or all in the second pass. | [forum: Is it Possible to Encode Only in the Second Pass?, 14/07/2025] |
-| C-7 | Wording for an undefined `rNN` operand. | "Undefined label" or "register out of range". | [forum: How to Treat an Operand that is a Register and Not in Range?, 14/07/2025] |
-| C-8 | Granularity of pre-assembler messages. | A general "invalid macro name" is enough. | [forum: Error Reporting, 25/06/2025] |
-| C-9 | Internal storage of the tables. | Implementer's choice; any temporary file must be deleted on error and at the end. | [forum: Macro Tables / Labels, 01/07/2025] |
+| ID | Choice | Options allowed | Source | Chosen [owner decision, 2026-11-26] | Rule |
+|---|---|---|---|---|---|
+| C-1 | Line number base in pass error messages. | `.as` line or `.am` line. | [forum: Printing Errors with Line Number in Case of Syntax Error in File, 02/07/2025] | **The `.as` line**, through a line map from the pre-assembler; a macro body line reports its line inside the definition. | ERR-R12, MAC-35, section 2.14 |
+| C-2 | Stage that checks the 80-character limit. | Pre-assembler or first pass. | [forum: Character Overflow Error, 09/06/2025; Checking Line Length Validity, 22/06/2025] | **The pre-assembler**; it is a pre-assembler error, so no `.am` and no passes. | SYN-2b, ERR-10 |
+| C-3 | Empty lines and comment lines in `.am`. | Keep them or delete them. | [forum: Handling Empty Lines and Comment Lines, 09/06/2025; Should the pre-assembler also copy empty lines or can it ignore and delete them?, 17/07/2025] | **Keep them**, exactly as they are. | MAC-29 |
+| C-4 | Extra text after a macro name on a call line. | Report in the pre-assembler (called "more logical" by the moderator) or leave the line for the first pass. | [forum: Macro Mention with Additional Text, 14/07/2025] | **Error reported by the pre-assembler.** | MAC-30, ERR-7 |
+| C-5 | After reporting extra text on a `mcroend` line: close the macro or ignore the line. | Either. | [forum: Redundant Text After Command, 14/07/2025] | **Report the error and close the macro** at that line. | MAC-31, ERR-4 |
+| C-6 | Where the encoding is done. | First and second pass as in the skeleton, or all in the second pass. | [forum: Is it Possible to Encode Only in the Second Pass?, 14/07/2025] | Not fixed; not observable. | ALG-13 |
+| C-7 | Wording for an undefined `rNN` operand. | "Undefined label" or "register out of range". | [forum: How to Treat an Operand that is a Register and Not in Range?, 14/07/2025] | Not fixed; wording is free. | LBL-16, ERR-R13 |
+| C-8 | Granularity of pre-assembler messages. | A general "invalid macro name" is enough. | [forum: Error Reporting, 25/06/2025] | Not fixed; wording is free. | MAC-26, ERR-R13 |
+| C-9 | Internal storage of the tables. | Implementer's choice; any temporary file must be deleted on error and at the end. | [forum: Macro Tables / Labels, 01/07/2025] | Not fixed; bound only by the coding rules in `CLAUDE.md`. | ALG-12 |
 
 Rulings about the code rather than the behaviour (recorded because they touch
 the project's coding rules):
@@ -934,8 +1196,16 @@ the project's coding rules):
 - **IMP-1** Arrays must not be defined as global variables; this answer was
   given to a question about a read-only (`const`) table of the instructions.
   Individual global variables are allowed. [forum: Defining Global Variables
-  for Arrays, 14/07/2025; Variables, 30/06/2025] This is stricter than the
-  rule in `CLAUDE.md` that allows const tables; see Q-25.
+  for Arrays, 14/07/2025; Variables, 30/06/2025] For this project: the
+  instruction table is a `static const` array, private to the
+  instruction-table module (defined in its `.c` file) and reachable from other
+  modules only through access functions. No array, constant or not, has
+  external linkage anywhere in the program. The sentence "const tables are
+  allowed" in the coding rules of `CLAUDE.md` is to be read in this way: a
+  const table is allowed as a `static` object inside one module, not as a
+  global array. [owner decision, 2026-11-26] (Q-25), which satisfies both the
+  moderator's ruling and `CLAUDE.md`. This rule has no effect on the
+  assembler's output.
 - **IMP-2** Dynamic allocation is recommended over a fixed 156-word array even
   for the code image. [forum: Memory overflow, 17/07/2025] (The booklet, p.46,
   allows a fixed maximum size for the machine-code image; ALG-12.)
@@ -983,8 +1253,13 @@ word, with the booklet tables on p.31-32, p.38, p.43-44 and the files on p.45.
 and the booklet agree on every word, every address, every symbol value and
 every `.ent` / `.ext` line. No unexplained disagreement was found.**
 
-The separator between the two fields of a line is shown as one space; the
-booklet does not define it (Q-4).
+The `.ob`, `.ent` and `.ext` listings below are byte-exact (OUT-13): the two
+fields of every line are separated by one real TAB character (ASCII 9), which
+is written as a TAB inside the code blocks of this file, not as spaces. An
+editor or a viewer may display it as a run of spaces; anyone who copies these
+listings into expected-output files must check that the TAB survived. The
+`.as` and `.am` listings are indented with spaces, as transcribed from the
+booklet.
 
 ### 4.1 Example 1 (booklet p.30-32, p.36-38)
 
@@ -1010,7 +1285,8 @@ K:        .data  22
 M1:       .mat  [2][2]  1,2,3,4
 ```
 
-After macro expansion (`.am`), p.30:
+After macro expansion (`.am`), p.30. The empty line of the source is kept, as
+MAC-29 requires and as the booklet prints it:
 
 ```
 MAIN:     mov   M1[r2][r7],LENGTH
@@ -1079,44 +1355,44 @@ Expected `.ob` (the booklet prints no `.ob` for this example; this is derived
 from the table above and OUT-4, OUT-5):
 
 ```
-bbc dd
-bcba aacba
-bcbb cabbc
-bcbc acbda
-bcbd caabc
-bcca acdba
-bccb acaaa
-bccc bdccc
-bccd cbaba
-bcda bdcbc
-bcdb dbaaa
-bcdc ddcda
-bcdd addda
-bdaa abbaa
-bdab bdaba
-bdac cabac
-bdad aacda
-bdba cabbc
-bdbb adada
-bdbc aaada
-bdbd ccaba
-bdca bccdc
-bdcb ddaaa
-bdcc abcab
-bdcd abcac
-bdda abcad
-bddb abcba
-bddc abcbb
-bddd abcbc
-caaa aaaaa
-caab aaabc
-caac dddbd
-caad aaadd
-caba aabbc
-cabb aaaab
-cabc aaaac
-cabd aaaad
-caca aaaba
+bbc	dd
+bcba	aacba
+bcbb	cabbc
+bcbc	acbda
+bcbd	caabc
+bcca	acdba
+bccb	acaaa
+bccc	bdccc
+bccd	cbaba
+bcda	bdcbc
+bcdb	dbaaa
+bcdc	ddcda
+bcdd	addda
+bdaa	abbaa
+bdab	bdaba
+bdac	cabac
+bdad	aacda
+bdba	cabbc
+bdbb	adada
+bdbc	aaada
+bdbd	ccaba
+bdca	bccdc
+bdcb	ddaaa
+bdcc	abcab
+bdcd	abcac
+bdda	abcad
+bddb	abcba
+bddc	abcbb
+bddd	abcbc
+caaa	aaaaa
+caab	aaabc
+caac	dddbd
+caad	aaadd
+caba	aabbc
+cabb	aaaab
+cabc	aaaac
+cabd	aaaad
+caca	aaaba
 ```
 
 Expected `.ent`: not created (no `.entry`). Expected `.ext`: not created (no
@@ -1183,59 +1459,59 @@ Code words (data words 122 to 136 are identical to example 1):
 Expected `ps.ob`:
 
 ```
-bbc dd
-bcba aacba
-bcbb cabbc
-bcbc acbda
-bcbd aaaab
-bcca acdba
-bccb acaaa
-bccc bdccc
-bccd cbaba
-bcda aaaab
-bcdb dbaaa
-bcdc ddcda
-bcdd addda
-bdaa abbaa
-bdab bdaba
-bdac cabac
-bdad aacda
-bdba cabbc
-bdbb adada
-bdbc aaada
-bdbd ccaba
-bdca aaaab
-bdcb ddaaa
-bdcc abcab
-bdcd abcac
-bdda abcad
-bddb abcba
-bddc abcbb
-bddd abcbc
-caaa aaaaa
-caab aaabc
-caac dddbd
-caad aaadd
-caba aabbc
-cabb aaaab
-cabc aaaac
-cabd aaaad
-caca aaaba
+bbc	dd
+bcba	aacba
+bcbb	cabbc
+bcbc	acbda
+bcbd	aaaab
+bcca	acdba
+bccb	acaaa
+bccc	bdccc
+bccd	cbaba
+bcda	aaaab
+bcdb	dbaaa
+bcdc	ddcda
+bcdd	addda
+bdaa	abbaa
+bdab	bdaba
+bdac	cabac
+bdad	aacda
+bdba	cabbc
+bdbb	adada
+bdbc	aaada
+bdbd	ccaba
+bdca	aaaab
+bdcb	ddaaa
+bdcc	abcab
+bdcd	abcac
+bdda	abcad
+bddb	abcba
+bddc	abcbb
+bddd	abcbc
+caaa	aaaaa
+caab	aaabc
+caac	dddbd
+caad	aaadd
+caba	aabbc
+cabb	aaaab
+cabc	aaaac
+cabd	aaaad
+caca	aaaba
 ```
 
 Expected `ps.ent` (line order is free, OUT-10):
 
 ```
-LOOP bccd
-LENGTH caab
+LOOP	bccd
+LENGTH	caab
 ```
 
 Expected `ps.ext` (line order is free, OUT-10):
 
 ```
-W bcbd
-W bcda
-L3 bdca
+W	bcbd
+W	bcda
+L3	bdca
 ```
 
 ### 4.3 Words that differ from the printed booklet
@@ -1260,7 +1536,8 @@ Notes:
   should read `bcdb dbaaa` instead of `bcdb daaaa`. **Both are student posts;
   the moderator did not reply**, so the forum contains no ruling on this line.
   The value `dbaaa` rests on correction 1 plus the derivation above, and it
-  agrees with the student's statement. See Q-24.
+  agrees with the student's statement. The owner treats `dbaaa` as settled.
+  [owner decision, 2026-11-26] (Q-24)
 - `prn` is the only operation in the examples whose opcode differs between the
   two tables. mov, add, sub, inc, jmp, bne and stop have the same opcode in
   both, so no other first word changes.
@@ -1276,206 +1553,260 @@ Notes:
 
 ## 5. Error categories
 
-Each condition is something the assembler must detect. "Source" names the rule
-and page. Conditions marked [inferred] are not listed by the booklet in so
-many words; they follow from a stated syntax rule together with the general
-duty to report syntax errors ("and other errors", p.34; "detect and report all
-erroneous lines", p.46).
+Each condition is something the assembler must detect and report in the
+format of ERR-R13, with the `.as` line number of ERR-R12. "Stage" names the
+stage that reports it; the stage is binding, because it decides which files
+exist afterwards and which other errors are reported in the same run.
+"Source" names the rule and its origin. Conditions marked [inferred] are not
+listed by the booklet in so many words; they follow from a stated syntax rule
+together with the general duty to report syntax errors ("and other errors",
+p.34; "detect and report all erroneous lines", p.46). Conditions that exist
+because of an owner decision are marked [owner decision, 2026-11-26]; the
+rule cited next to the mark gives the source that allows the decision.
 
-### 5.1 Pre-assembler
+ERR IDs are stable. ERR-10 keeps its number although it moved from the first
+pass to the pre-assembler.
 
-| ID | Condition | Source |
-|---|---|---|
-| ERR-1 | A source file named on the command line cannot be opened (name + `.as`). | CLI-6 [forum: Input File Name, 22/06/2025] |
-| ERR-2 | The macro name is the name of an instruction or of a directive ("and the like"). | MAC-9 [booklet p.25] |
-| ERR-3 | Extra characters after the macro name on the `mcro` line. | MAC-10 [booklet p.25] |
-| ERR-4 | Extra characters on the `mcroend` line. | MAC-10 [booklet p.25] |
-| ERR-5 | `mcro` line with no macro name. | [inferred] from MAC-2 and MAC-9 ("the macro name is valid"). |
-| ERR-6 | Macro name not syntactically valid: does not start with a letter, contains a character other than letters, digits and `_`, or is longer than 30 characters. | MAC-17 [forum: Valid Macro Names, 03/06/2025; Macro name, 22/07/2025] |
-| ERR-7 | Extra text after the macro name on a macro call line. Reporting it in the pre-assembler is the moderator's recommendation, not an obligation; otherwise the line is left for the first pass to reject. | [forum: Macro Mention with Additional Text, 14/07/2025] |
+### 5.1 Command line
 
-Effect of any pre-assembler error: report it with its line number, keep
+| ID | Condition | Stage | Source |
+|---|---|---|---|
+| ERR-1 | A source file named on the command line cannot be opened. The name tried is the argument with `.as` appended, so the argument `x.as` fails on `x.as.as`. The message has no line number: `<name>.as: error: <text>`. | Before the pre-assembler, per file | CLI-6 [forum: Input File Name, 22/06/2025]; CLI-8 [owner decision, 2026-11-26] |
+
+Effect: nothing is written for that file and the exit status is 1 (CLI-9).
+
+### 5.2 Pre-assembler
+
+| ID | Condition | Stage | Source |
+|---|---|---|---|
+| ERR-2 | The macro name is a reserved word: an operation name, a directive name without the dot, a register name `r0` to `r7`, `mcro` or `mcroend`. | Pre-assembler | MAC-9 [booklet p.25]; MAC-33, LBL-20 [owner decision, 2026-11-26] |
+| ERR-3 | Extra non-whitespace characters after the macro name on the `mcro` line. | Pre-assembler | MAC-10 [booklet p.25]; MAC-19 |
+| ERR-4 | Extra non-whitespace characters after the word `mcroend`. The definition is closed at that line all the same. | Pre-assembler | MAC-10 [booklet p.25]; MAC-31 [owner decision, 2026-11-26] |
+| ERR-5 | `mcro` line with no macro name. | Pre-assembler | [inferred] from MAC-2 and MAC-9 ("the macro name is valid"). |
+| ERR-6 | Macro name not syntactically valid: the first character is not a letter (this includes a leading `_`), a later character is not a letter, a digit or `_`, or the name is longer than 30 characters. | Pre-assembler | MAC-17 [forum: Valid Macro Names, 03/06/2025; Macro name, 22/07/2025]; MAC-33 [owner decision, 2026-11-26] |
+| ERR-7 | Extra non-whitespace text after the macro name on a macro call line. | Pre-assembler | MAC-30 [owner decision, 2026-11-26], allowed by [forum: Macro Mention with Additional Text, 14/07/2025] |
+| ERR-8 | A `mcro` line defines a macro name that is already in the macro table (second definition of the same name). Reported on the second `mcro` line. | Pre-assembler | MAC-28 [owner decision, 2026-11-26]; MAC-15 [forum: Do We Need to Check Multiple Definitions of the Same Macro?, 08/06/2025; Whitespace in Macros, 18/06/2025; Error Reporting, 25/06/2025] |
+| ERR-9 | A label definition in front of `mcro`, in front of `mcroend`, or in front of a macro call. | **Not yet decided (Q-28).** Tests for ERR-9 must wait for that decision. | MAC-34 [owner decision, 2026-11-26]; MAC-21 [forum: Label at the beginning/end of macro definition, 22/07/2025] |
+| ERR-10 | A line of the `.as` file is longer than 80 characters, not counting the newline. Applies to every line, whatever its kind. | Pre-assembler | SYN-2 [booklet p.25]; SYN-2a [forum: Line with More Than 80 Characters: Does the Assembler Ignore the Line and Continue or Stop?, 14/07/2025]; SYN-2b [owner decision, 2026-11-26] |
+
+Effect of any pre-assembler error: report it with its `.as` line number, keep
 scanning the file for further pre-assembler errors (MAC-22), leave no `.am`
 file and do not run the passes for this source file (MAC-23), then continue
-with the next source file (MAC-11).
+with the next source file (MAC-11). The exit status is 1 (CLI-9). Errors that
+only the passes can find are therefore not reported for such a file in the
+same run.
 
-Not checked, by stated assumption: nested definitions (MAC-6), missing
+Not checked, by stated assumption: nested definitions (MAC-6), a missing
 `mcroend` (MAC-7), use before definition (MAC-8), text before `mcroend`
-(MAC-20), the macro body (MAC-24), duplicate macro names (MAC-15, but see
-Q-21). A label in front of `mcro`, `mcroend` or a macro call is ruled out by
-MAC-21; whether it must be reported is Q-22.
+(MAC-20), the content of the macro body (MAC-24). A test must not contain
+these inputs, because the behaviour for them is undefined.
 
-### 5.2 First pass
+Not a pre-assembler matter: a macro name on a line inside a macro body is
+not expanded (MAC-32); the line reaches the first pass and fails there as
+ERR-17. A label that has the name of a macro is ERR-14, in the first pass.
 
-| ID | Condition | Source |
+### 5.3 First pass
+
+| ID | Condition | Stage | Source |
+|---|---|---|---|
+| ERR-11 | Label does not start with a letter, or contains a character that is not a letter or a digit. | First pass | LBL-2 [booklet p.28] [inferred as an error] |
+| ERR-12 | Label longer than 30 characters. | First pass | LBL-3 [booklet p.28] [inferred as an error] |
+| ERR-13 | Label is a reserved word: an operation name, a directive name without the dot (`data`, `string`, `mat`, `entry`, `extern`), a register name `r0` to `r7`, `mcro` or `mcroend`. `PSW` and `PC` are legal labels. | First pass | LBL-7 [booklet p.29]; LBL-14 [forum: Reserved Words for Label Names, 03/06/2025]; LBL-20 [owner decision, 2026-11-26] |
+| ERR-14 | Label has the name of a macro defined anywhere in the same file, before or after the label. Reported on the line of the label definition; the first pass consults the macro table. | First pass | LBL-8 [booklet p.29]; LBL-15 [forum: Should we check if a label name is not a macro name or is it considered a given?, 22/07/2025]; LBL-21 [owner decision, 2026-11-26] |
+| ERR-15 | Label (symbol) already in the symbol table: defined twice. Reported on the line of the later definition. | First pass | LBL-5 [booklet p.29, p.34, p.35 steps 6, 11] |
+| ERR-16 | Whitespace between a label and its colon. | First pass | LBL-4 [booklet p.29] [inferred as an error] |
+| ERR-17 | Unknown operation name. This includes a macro name left unexpanded inside a macro body (MAC-32). | First pass | SYN-11 [booklet p.34, p.35 step 12]; MAC-32 [owner decision, 2026-11-26] |
+| ERR-18 | Unknown directive name. | First pass | [inferred] from DIR-2, DIR-4. |
+| ERR-19 | Too many operands for the operation. | First pass | SYN-14 [booklet p.34] |
+| ERR-20 | Too few operands for the operation. | First pass | SYN-14 [booklet p.34] ("wrong number of operands") |
+| ERR-21 | Source operand addressing mode not legal for the operation. | First pass | INS-4 [booklet p.34, p.35] |
+| ERR-22 | Destination operand addressing mode not legal for the operation. | First pass | INS-4 [booklet p.34, p.35] |
+| ERR-23 | A matrix index that is not one of r0..r7. (A bare operand such as `r8` or `r20` is a label reference, LBL-16; it is an error only if no such label is defined, and then it is ERR-50.) | First pass | SYN-14 [booklet p.34]; LBL-16 [forum: How to Treat an Operand that is a Register and Not in Range?, 14/07/2025] |
+| ERR-24 | Malformed immediate operand: `#` not followed immediately by a legal integer. | First pass | ADR-2, SYN-20 [booklet p.21, p.29] [inferred as an error] |
+| ERR-25 | Malformed matrix operand: missing or unbalanced brackets, an index that is not a register, or not exactly two indices. | First pass | ADR-6 [booklet p.21] [inferred as an error] |
+| ERR-26 | Comma errors between operands: missing comma, more than one comma, comma before the first operand or after the last. | First pass | SYN-13, DIR-6 [booklet p.26, p.28] |
+| ERR-27 | Extra text after the last operand of an instruction (or after an instruction with no operands). | First pass | [inferred] from SYN-10 and SYN-14. |
+| ERR-28 | `.data` with no values. | First pass | DIR-5 ("one or more") [booklet p.26] [inferred as an error] |
+| ERR-29 | `.data` or `.mat` value that is not a legal integer. | First pass | DIR-5, SYN-20 [booklet p.26, p.29] [inferred as an error] |
+| ERR-30 | `.data` or `.mat` list comma errors: missing comma, more than one comma between numbers, comma before the first or after the last number. | First pass | DIR-6 [booklet p.26] |
+| ERR-31 | `.string` operand is not a legal string: missing opening or closing double quote, or characters outside the quotes. (`.string ""` is legal, DIR-32.) | First pass | DIR-9, SYN-22 [booklet p.26, p.29] [inferred as an error] |
+| ERR-32 | `.string` contains a character outside ASCII 32..126. | First pass | SYN-22 [booklet p.29] [forum: What is Considered a Valid String for .string?, 25/06/2025] |
+| ERR-33 | `.mat` dimensions malformed: missing brackets, whitespace between `]` and `[`, or a dimension that is not a number (for example a register). | First pass | DIR-12 [booklet p.27]; DIR-26, DIR-27 [forum: Can .mat be Defined by Non-Constant Values?, 14/07/2025; Spaces within square brackets in a matrix, 22/07/2025] |
+| ERR-34 | `.entry` or `.extern` with a missing operand, more than one operand, or an operand that is not a legal label name. | First pass | DIR-17, DIR-20 [booklet p.27] [inferred as an error] |
+| ERR-35 | Missing whitespace between an operation name and its first operand. | First pass | SYN-12 [booklet p.28] [inferred as an error] |
+| ERR-36 | Missing whitespace between a directive name and its operand. | First pass | SYN-17 [forum: Spaces in directives, 22/07/2025] |
+| ERR-37 | In a matrix operand, whitespace between the label and the first `[`, or between `]` and the second `[`. | First pass | SYN-18 [forum: Spaces within square brackets in a matrix, 22/07/2025] |
+| ERR-38 | Missing whitespace between the colon of a label definition and the statement. | First pass | LBL-18 [forum: Is Whitespace Required Between a Colon (After a Label Name) and an Instruction/Directive?, 03/06/2025] |
+| ERR-39 | A number outside its signed range: an immediate operand outside -128..127, or a `.data` / `.mat` value outside -512..511. | First pass | SYN-21 [forum: Maximum size of numbers using 2's complement method, 14/07/2025]; bounds [owner decision, 2026-11-26], implied by [booklet p.19, p.21, p.26] |
+| ERR-40 | `.mat` with more initial values than rows × columns. | First pass | DIR-25 [forum: Initializing a Matrix with More Values Than its Size, 14/07/2025] |
+| ERR-41 | Memory overflow: code plus data go beyond address 255 (more than 156 words in total). The scan for other errors continues. The line number, if any, of this message is not yet decided (Q-30). | First pass | ALG-15 [forum: Memory overflow, 14/07/2025; Memory size, 17/07/2025] |
+| ERR-42 | Matrix operand with no label before the brackets. | First pass | SYN-23 [forum: Matrix definition, 17/07/2025] |
+| ERR-43 | A `;` that is not the first character of the line (comment after leading whitespace or after a statement); it is reported as whatever syntax error the text produces. | First pass | SYN-9 [forum: Line with More Than 80 Characters: Does the Assembler Ignore the Line and Continue or Stop?, 14/07/2025] |
+| ERR-44 | A `.mat` dimension that is 0, negative, or written with a sign (`+2`, `-2`). | First pass | DIR-33 [owner decision, 2026-11-26]; the sources are silent |
+| ERR-45 | A label definition with nothing after the colon. | First pass | LBL-22 [owner decision, 2026-11-26], implied by [booklet p.25, p.28, p.35] |
+
+Rules that apply to all first-pass errors:
+
+- A legal label on a line that has another error is still entered into the
+  symbol table (LBL-23), so one bad line does not produce "undefined symbol"
+  messages on other lines.
+- All lines are still scanned (ERR-R4). The second pass is skipped
+  (ERR-R7), so the errors of section 5.4 are not reported in the same run.
+  No `.ob`, `.ent`, `.ext` are written (ERR-R6); the `.am` file stays
+  (OUT-11). The exit status is 1 (CLI-9).
+
+### 5.4 Second pass
+
+| ID | Condition | Stage | Source |
+|---|---|---|---|
+| ERR-50 | Operand symbol not found in the symbol table (neither defined nor declared external). Reported on the line of the instruction that uses it. | Second pass | LBL-13 [booklet p.36 step 6] |
+| ERR-51 | `.entry` names a symbol that is not in the symbol table. Reported on the `.entry` line. | Second pass | DIR-19 [booklet p.36 step 5] |
+| ERR-52 | The same symbol is declared both `.entry` and `.extern`. Reported on the `.entry` line, where the second pass meets the conflict [inferred]. | Second pass | DIR-23 [booklet p.28]; stage from [booklet p.36 step 5] (`.entry` is handled only in the second pass) |
+| ERR-53 | A symbol declared `.extern` is also defined as a label in the same file, in either order. | First pass when the `.extern` line comes first, as in the skeleton [booklet p.35 steps 6, 11]. For the other order the stage and the line are not yet decided (Q-30). | DIR-30 [forum: Translation Unit and Second Pass Errors, 02/07/2025] |
+
+Effect: no `.ob`, `.ent`, `.ext` are written (ERR-R6); the `.am` file stays
+(OUT-11). The exit status is 1 (CLI-9).
+
+### 5.5 Fatal condition
+
+A memory allocation failure, in any stage: the assembler reports it, frees
+all memory and the whole program exits (ERR-R10) with status 1 (CLI-9). It has
+no ERR ID because a test cannot provoke it.
+
+### 5.6 Warnings
+
+A warning uses the format of ERR-R14 and never suppresses output files. The
+only warning the sources mention is the optional one for a label in front of
+`.entry` or `.extern` (DIR-18, DIR-22) [booklet p.27, p.28]. Whether this
+project prints it is not yet decided (Q-27); until then tests must not contain
+a label in front of `.entry` or `.extern`.
+
+### 5.7 Constructs that are legal and must not be reported
+
+Listed because each was once an open question or is easy to mistake for an
+error.
+
+| Construct | Behaviour | Rule |
 |---|---|---|
-| ERR-10 | Line longer than 80 characters (excluding the newline). May be detected in the pre-assembler instead (section 2.15). | SYN-2, SYN-2a [booklet p.25] [forum: Line with More Than 80 Characters: Does the Assembler Ignore the Line and Continue or Stop?, 14/07/2025] |
-| ERR-11 | Label does not start with a letter, or contains a character that is not a letter or a digit. | LBL-2 [booklet p.28] [inferred as an error] |
-| ERR-12 | Label longer than 30 characters. | LBL-3 [booklet p.28] [inferred as an error] |
-| ERR-13 | Label is a reserved word (operation, directive or register name, `mcro`, `mcroend`). | LBL-7 [booklet p.29]; LBL-14 [forum: Reserved Words for Label Names, 03/06/2025] |
-| ERR-14 | Label is the same as a macro name. | LBL-8 [booklet p.29] |
-| ERR-15 | Label (symbol) already in the symbol table: defined twice. | LBL-5 [booklet p.29, p.34, p.35 steps 6, 11] |
-| ERR-16 | Whitespace between a label and its colon. | LBL-4 [booklet p.29] [inferred as an error] |
-| ERR-17 | Unknown operation name. | SYN-11 [booklet p.34, p.35 step 12] |
-| ERR-18 | Unknown directive name. | [inferred] from DIR-2, DIR-4. |
-| ERR-19 | Too many operands for the operation. | SYN-14 [booklet p.34] |
-| ERR-20 | Too few operands for the operation. | SYN-14 [booklet p.34] ("wrong number of operands") |
-| ERR-21 | Source operand addressing mode not legal for the operation. | INS-4 [booklet p.34, p.35] |
-| ERR-22 | Destination operand addressing mode not legal for the operation. | INS-4 [booklet p.34, p.35] |
-| ERR-23 | A matrix index that is not one of r0..r7. (A bare operand such as `r8` or `r20` is a label reference, LBL-16; it is an error only if no such label is defined, and then it is ERR-50, with either wording.) | SYN-14 [booklet p.34]; LBL-16 [forum: How to Treat an Operand that is a Register and Not in Range?, 14/07/2025] |
-| ERR-24 | Malformed immediate operand: `#` not followed immediately by a legal integer. | ADR-2, SYN-20 [booklet p.21, p.29] [inferred as an error] |
-| ERR-25 | Malformed matrix operand: missing or unbalanced brackets, an index that is not a register, or not exactly two indices. | ADR-6 [booklet p.21] [inferred as an error] |
-| ERR-26 | Comma errors between operands: missing comma, more than one comma, comma before the first operand or after the last. | SYN-13, DIR-6 [booklet p.26, p.28] |
-| ERR-27 | Extra text after the last operand of an instruction (or after an instruction with no operands). | [inferred] from SYN-10 and SYN-14. |
-| ERR-28 | `.data` with no values. | DIR-5 ("one or more") [booklet p.26] [inferred as an error] |
-| ERR-29 | `.data` or `.mat` value that is not a legal integer. | DIR-5, SYN-20 [booklet p.26, p.29] [inferred as an error] |
-| ERR-30 | `.data` or `.mat` list comma errors: missing comma, more than one comma between numbers, comma before the first or after the last number. | DIR-6 [booklet p.26] |
-| ERR-31 | `.string` operand is not a legal string: missing opening or closing double quote, or characters outside the quotes. | DIR-9, SYN-22 [booklet p.26, p.29] [inferred as an error] |
-| ERR-32 | `.string` contains a character outside ASCII 32..126. | SYN-22 [booklet p.29] [forum: What is Considered a Valid String for .string?, 25/06/2025] |
-| ERR-33 | `.mat` dimensions malformed: missing brackets, whitespace between `]` and `[`, or a dimension that is not a number (for example a register). | DIR-12 [booklet p.27]; DIR-26, DIR-27 [forum: Can .mat be Defined by Non-Constant Values?, 14/07/2025; Spaces within square brackets in a matrix, 22/07/2025] |
-| ERR-34 | `.entry` or `.extern` with a missing operand, more than one operand, or an operand that is not a legal label name. | DIR-17, DIR-20 [booklet p.27] [inferred as an error] |
-| ERR-35 | Missing whitespace between an operation name and its first operand. | SYN-12 [booklet p.28] [inferred as an error] |
-| ERR-36 | Missing whitespace between a directive name and its operand. | SYN-17 [forum: Spaces in directives, 22/07/2025] |
-| ERR-37 | In a matrix operand, whitespace between the label and the first `[`, or between `]` and the second `[`. | SYN-18 [forum: Spaces within square brackets in a matrix, 22/07/2025] |
-| ERR-38 | Missing whitespace between the colon of a label definition and the statement. | LBL-18 [forum: Is Whitespace Required Between a Colon (After a Label Name) and an Instruction/Directive?, 03/06/2025] |
-| ERR-39 | A number overflows its field: an immediate operand that does not fit in 8 bits, or a `.data` / `.mat` value that does not fit in 10 bits. | SYN-21 [forum: Maximum size of numbers using 2's complement method, 14/07/2025]; exact bounds: Q-6 |
-| ERR-40 | `.mat` with more initial values than rows × columns. | DIR-25 [forum: Initializing a Matrix with More Values Than its Size, 14/07/2025] |
-| ERR-41 | Memory overflow: code plus data go beyond address 255 (more than 156 words in total). Reported once the sizes are known; the scan for other errors continues. | ALG-15 [forum: Memory overflow, 14/07/2025; Memory size, 17/07/2025] |
-| ERR-42 | Matrix operand with no label before the brackets. | SYN-23 [forum: Matrix definition, 17/07/2025] |
-| ERR-43 | A `;` that is not the first character of the line (comment after leading whitespace or after a statement); it is reported as whatever syntax error the text produces. | SYN-9 [forum: Line with More Than 80 Characters: Does the Assembler Ignore the Line and Continue or Stop?, 14/07/2025] |
-
-Warnings (not errors, optional): a label in front of `.entry` or `.extern`
-(DIR-18, DIR-22) [booklet p.27, p.28].
-
-Effect: all lines are still scanned (ERR-R4); the second pass is skipped and
-no `.ob`, `.ent`, `.ext` are written (ERR-R6, ERR-R7).
-
-### 5.3 Second pass
-
-| ID | Condition | Source |
-|---|---|---|
-| ERR-50 | Operand symbol not found in the symbol table (neither defined nor declared external). | LBL-13 [booklet p.36 step 6] |
-| ERR-51 | `.entry` names a symbol that is not in the symbol table. | DIR-19 [booklet p.36 step 5] |
-| ERR-52 | The same symbol is declared both `.entry` and `.extern`. | DIR-23 [booklet p.28] |
-| ERR-53 | A symbol declared `.extern` is also defined as a label in the same file, in either order. (May be detected in the first pass.) | DIR-30 [forum: Translation Unit and Second Pass Errors, 02/07/2025] |
-
-Fatal condition, any stage: a memory allocation failure. The assembler
-reports it, frees all memory and the whole program exits (ERR-R10).
-
-Effect: no `.ob`, `.ent`, `.ext` are written (ERR-R6).
-
-### 5.4 Conditions the sources do not classify
-
-These are deliberately **not** given ERR IDs, because neither the forum nor
-the booklet says whether they are errors. Each is an open question in section
-6: a number in the unsigned upper half of its field (Q-6), zero or negative
-`.mat` dimensions (Q-7), `.extern` or `.entry` repeated for the same symbol
-(Q-8), a label alone on a line (Q-14), an empty string (Q-17), duplicate macro
-names (Q-21), a label in front of `mcro` / `mcroend` / a macro call (Q-22).
+| `.string ""` | Legal; one word holding 0. | DIR-32 |
+| `.extern X` twice, or `.entry X` twice | Accepted silently; `X` appears once in `.ent`. | DIR-34 |
+| `.mat [2][2]1,2,3,4` (no whitespace after `]`) | Legal. | DIR-33 |
+| `.mat` with fewer values than cells | Legal; the rest are 0. | DIR-24 |
+| A label named `PSW`, `PC`, `r8`, `r20` | Legal. | LBL-20, LBL-16 |
+| `.data`, `.string`, `.mat` without a label | Legal. | DIR-28 |
+| A program without `stop` | Legal. | ALG-16 |
+| No file arguments | Not an error; exit status 0. | CLI-5, CLI-9 |
+| The same error message repeated for every call of a macro | Accepted. | ERR-R12, MAC-13 |
 
 ---
 
 ## 6. Open questions
 
-This section lists only what neither the forum nor the booklet settles. Q
-numbers are stable: numbers of questions that the forum resolved are kept in
-the table in 6.2 so that older references still resolve.
+This section lists what is still undecided. Q numbers are stable: a question
+that has been settled keeps its number in the table in 6.2, so that older
+references still resolve. Q-19 and Q-23 were never used.
 
 ### 6.1 Still open
 
-- **Q-3 File name in error messages.** No source requires it. The booklet
-  requires the line number (p.34) and enough detail to know "what and where"
-  each error is (p.46); the forum adds only "with the line number"
-  [forum: Error Reporting, 25/06/2025]. No message format is given anywhere.
-  Options: print `file:line: message`, or line and message only.
-- **Q-4 Separators in `.ob`, `.ent`, `.ext`.** The fields are defined (OUT-4,
-  OUT-8, OUT-9) and the widths follow the booklet example, to which the
-  moderator refers [forum: Output File Format, 08/06/2025]. What cannot be
-  read from the PDF: whether fields are separated by a space or a tab and how
-  many; whether the first line of `.ob` is indented as printed on p.45;
-  whether a header value of zero is printed as `a`. A student pointed out the
-  PDF problem and got no reply.
-- **Q-6 Exact numeric bounds.** The moderator ruled that overflow must be
-  checked [forum: Maximum size of numbers using 2's complement method,
-  14/07/2025] but gave no bounds. Readings: signed only (immediate -128..127,
-  data -512..511); or also the unsigned upper half (immediate up to 255, data
-  up to 1023). A student argued for -128..127; that is not a ruling.
-- **Q-7 `.mat` dimension details.** Settled: partial initialisation (DIR-24),
-  too many values (DIR-25), non-numeric dimensions (DIR-26), bracket
-  whitespace (DIR-27). Still open: whether a dimension may be 0, negative or
-  written with a sign; whether whitespace is required between the last `]` and
-  the first initial value.
-- **Q-8 Repeated `.extern` or `.entry` for the same symbol.** Settled: a
-  symbol both defined in the file and declared `.extern` is an error
-  (DIR-30). Still open: `.extern X` twice, `.entry X` twice (error, warning or
-  silently accepted). The skeleton algorithm (p.35 step 10) has no check.
-- **Q-9 Reserved words.** Settled: `mcro` and `mcroend` are reserved
-  (LBL-14); `r20`-style names are ordinary label names (LBL-16). Still open:
-  whether directive names without the dot (`data`, `string`, `mat`, `entry`,
-  `extern`) are reserved; whether `PSW` and `PC` are reserved.
-- **Q-10 A macro name inside the body of another macro.** Settled: a call is
-  the name alone on a line (MAC-3) and no label may precede it (MAC-21). Still
-  open: whether a call to an earlier macro inside a later macro's body is
-  expanded. A student wrote that it need not be supported; no moderator reply.
-- **Q-11 Remaining macro-name details.** Settled: label rules plus `_`, at
-  most 30 characters (MAC-17). Still open: whether `_` may be the first
-  character ("valid like a label name" suggests a letter first); whether a
-  register name is forbidden (the booklet's "an instruction name and the
-  like", p.25); how a macro name equal to a label defined *earlier* in the
-  file is caught, since labels are collected only in the first pass (LBL-8
-  requires the check, the stage is not stated).
-- **Q-14 Edge cases of label definitions.** Settled: whitespace after the
-  colon is mandatory (LBL-18). Still open: whether a label alone on a line is
-  legal; whether a label on a line that fails with another error still enters
-  the symbol table.
-- **Q-16 Command-line edge cases.** Settled: no arguments is not an error
-  (CLI-5); a file that does not open is an error (CLI-6). Still open: an
-  argument given with the `.as` suffix already attached (reading CLI-6
-  literally, `x.as.as` is tried and fails); the exit status of the program.
-- **Q-17 Empty string.** Settled: characters 32..126 only, inner quotation
-  marks and backslashes are ordinary characters (SYN-22). Still open: whether
-  `.string ""` is legal (it would allocate only the terminator word).
-- **Q-21 Duplicate macro names: two moderator answers.** "Should an error be
-  output if several macros have the same name?" was answered "Yes"
-  [forum: Do We Need to Check Multiple Definitions of the Same Macro?,
-  08/06/2025]. Later, "do we need to check for collisions in macro names?" was
-  answered "there is no need to check for duplicate macro names" [forum: Macro
-  name, 22/07/2025]. (A third post, "Of course", answers a multi-part question
-  that included duplicates [forum: Whitespace in Macros, 18/06/2025].) SPEC
-  applies the latest (MAC-15). Options for the project: report an error
-  (allowed by both, required by the first); or do not check, in which case the
-  behaviour for a second definition (first wins, last wins) is undefined.
-- **Q-22 Label in front of `mcro`, `mcroend` or a macro call.** The moderator
-  answered "No" to "can such situations exist?" [forum: Label at the
-  beginning/end of macro definition, 22/07/2025]. Readings: (a) such input
-  never occurs and need not be handled; (b) such input is illegal and must be
-  reported. Under SPEC as written, `label: mcro x` is not recognised as a
-  definition and `label: a_mc` is not a call (MAC-3), so the first pass
-  rejects both lines as unknown operations.
-- **Q-24 The prn word in the worked examples.** `bcdb dbaaa` (opcode 13) is
-  what correction 1 implies and what a student states in the corrections
-  thread; the direct question to the moderator was not answered
-  [forum: Clarifications and Corrections, 14/07/2025, thread]. There is no
-  reading of the sources under which `daaaa` is right, but it is recorded here
-  because the confirmation is not a ruling.
-- **Q-25 Global const tables.** The moderator ruled "do not define arrays as
-  global" in reply to a question about a read-only instruction table (IMP-1).
-  `CLAUDE.md` allows const tables at file scope. The two disagree; this is a
-  coding-rule decision for the owner, with no effect on the assembler's
-  output.
+Nothing in this list is a doubt about the sources: the sources are silent on
+every item, and every item is something a test author needs. They wait for
+the owner. Until an item is decided, tests must stay away from the input it
+describes or must not assert the behaviour it describes; each item says how.
 
-### 6.2 Resolved since the first version of this file
+- **Q-26 What is written to `stdout` when there is no error.** Options: print
+  nothing for a file that assembles; or print a line per file (for example a
+  "success" notice). The same question for a run with no arguments: CLI-5
+  says the assembler "can report", and nothing fixes whether it does or what
+  the notice looks like. Until decided: tests compare only the lines of
+  `stdout` that match the message format of ERR-R13 and ERR-R14, and do not
+  assert that `stdout` is empty.
+- **Q-27 Label in front of `.entry` or `.extern`.** The booklet says the
+  label is ignored and a warning may be printed (DIR-18, DIR-22). Undecided:
+  whether this project prints the warning (ERR-R14 fixes only its format);
+  and whether the ignored label is still checked, that is whether an
+  ill-formed, reserved or already defined name in that position is an error.
+  Until decided: no test puts a label in front of `.entry` or `.extern`.
+- **Q-28 Stage that reports a label in front of `mcro`, `mcroend` or a macro
+  call (ERR-9).** MAC-34 makes it an error but the decision names no stage.
+  Options: the pre-assembler (then no `.am` is written and the passes do not
+  run); or the first pass (then the pre-assembler does not recognise
+  `L: mcro x` as a definition, by MAC-3 and MAC-16 its first field is the
+  label, so the line, the body lines and the `mcroend` line are copied to
+  `.am`, and what the first pass reports for each of them would have to be
+  specified too). Until decided: no test contains such a line.
+- **Q-29 Number and order of messages.** ERR-R9 says one message per input
+  line is sufficient. Undecided: whether the assembler prints exactly one
+  message for a line with several errors or may print more; and the order of
+  the messages on `stdout` (by file in command-line order and by line number
+  within a file is the natural order, but with ERR-R12 a macro called twice
+  repeats a line number later in the output, and ERR-41 may have no line).
+  Until decided: every test line contains at most one error, and tests
+  compare the messages of a file as an unordered collection of
+  (file, line, severity).
+- **Q-30 Line number and stage of errors that are not tied to one line.**
+  (a) ERR-41, memory overflow: reported with no line (the `<name>.as: error:`
+  form), or on the line whose words first cross address 255. (b) ERR-53 when
+  the label is defined first and `.extern` comes later: first pass on the
+  `.extern` line, or second pass. Until decided: tests for ERR-41 assert only
+  the file name and the severity; tests for ERR-53 put the `.extern` line
+  first, or assert only the file name and the severity, and contain no other
+  error.
+- **Q-31 Output files left from an earlier run.** OUT-12 says stale `.ent`
+  and `.ext` files need not be deleted. Undecided: whether the assembler
+  removes an existing `.am`, `.ob`, `.ent` or `.ext` of the same name when
+  the current run does not produce that file (because of an error, or
+  because there is nothing to write). Until decided: the test runner deletes
+  all generated files before each run, so that "file not created" can be
+  asserted.
+- **Q-32 Edge cases of the input text.** (a) A last line that does not end
+  with a newline: whether the `.am` file adds one. (b) Line endings with a
+  carriage return (CR LF): the CR is whitespace by SYN-8, but whether it
+  counts towards the 80 characters of SYN-2 and whether it is copied to `.am`
+  is not stated. (c) A source file with no statements at all (empty, or only
+  empty lines and comments): by OUT-13 the `.ob` file would hold the single
+  line `a<TAB>a`, but nothing says whether an `.ob` file is created for an
+  empty program. Until decided: every test input ends with a newline, uses LF
+  line endings and contains at least one instruction or data directive.
+- **Q-33 A file that cannot be opened among several files.** CLI-3 says every
+  file is processed separately, and MAC-11 says that after a pre-assembler
+  error the assembler moves on to the next file; so a file with only
+  pre-assembler errors does not stop the run, and the files after it are
+  assembled normally (the exit status is 1, CLI-9). For a file that cannot be
+  opened (ERR-1) the sources say only "report an error"; continuing with the
+  next argument is the natural reading [inferred] but is not stated. Until
+  decided: a test with an argument that cannot be opened gives it as the only
+  or the last argument.
 
-| Q | Question | Resolution |
-|---|---|---|
-| Q-1 | Initial IC and load address (p.33 says 100, p.35 says 0). | 100. ALG-2 [forum: First Address for Loading into Memory, 08/06/2025] |
-| Q-2 | Line number in error messages: `.as` or `.am`? | Either is accepted. Section 2.14 [forum: Printing Errors with Line Number in Case of Syntax Error in File, 02/07/2025] |
-| Q-5 | Program larger than memory. | Error; keep looking for more errors. ALG-15 [forum: Memory overflow, 14/07/2025] |
-| Q-12 | Does the pre-assembler check errors (p.25 against p.34)? Is `.am` left after a failure? | It checks the macro name and the `mcro` / `mcroend` lines, finds all such errors, and leaves no `.am`. MAC-18, MAC-22, MAC-23 |
-| Q-13 | Where the 80-character limit is checked. | Implementer's choice; the error must be reported and scanning continues. SYN-2a, C-2 |
-| Q-15 | Comments after leading whitespace or after a statement. | Not comments; `;` must be the first character of the line. SYN-9 |
-| Q-18 | Attribute of a `.mat` symbol (blank on p.37). | "data". DIR-16 |
-| Q-20 | Unverified owner-reported rulings. | Verified; see section 2.13. |
+### 6.2 Resolved
+
+"Owner" in the last column means [owner decision, 2026-11-26]; the rule cited
+gives the source that allows or implies the decision.
+
+| Q | Question | Resolution | Rule |
+|---|---|---|---|
+| Q-1 | Initial IC and load address (p.33 says 100, p.35 says 0). | 100. [forum: First Address for Loading into Memory, 08/06/2025] | ALG-2 |
+| Q-2 | Line number in error messages: `.as` or `.am`? | The sources accept either [forum: Printing Errors with Line Number in Case of Syntax Error in File, 02/07/2025]. Owner (C-1): always the `.as` line, through a line map; a macro body line reports its line inside the definition. | ERR-R12, MAC-35, section 2.14 |
+| Q-3 | File name and format of error messages. | Sources silent. Owner: `<name>.as:<line>: error: <text>` on `stdout`; `<name>.as: error: <text>` without a line; `warning:` for warnings; wording free; tests compare file, line and severity. | ERR-R13, ERR-R14 |
+| Q-4 | Separators and layout of `.ob`, `.ent`, `.ext`. | Widths from the example [booklet p.45] [forum: Output File Format, 08/06/2025]. Owner: one TAB, no indentation, no trailing whitespace, no blank lines, newline after every line; header without leading `a`; zero is `a`. | OUT-13, OUT-5 |
+| Q-5 | Program larger than memory. | Error; keep looking for more errors. [forum: Memory overflow, 14/07/2025] | ALG-15, ERR-41 |
+| Q-6 | Exact numeric bounds. | Owner: signed only, -128..127 for an immediate operand and -512..511 for `.data` / `.mat`. Implied by [booklet p.19, p.21, p.26] and the overflow ruling [forum: Maximum size of numbers using 2's complement method, 14/07/2025]. | SYN-21, ERR-39 |
+| Q-7 | `.mat` dimension 0, negative or signed; whitespace before the first value. | Sources silent. Owner: a dimension is unsigned decimal digits with value at least 1, anything else is an error; the whitespace is optional. | DIR-33, ERR-44 |
+| Q-8 | `.extern X` twice, `.entry X` twice. | Owner: accepted silently; one line in `.ent`. Implied by the skeleton algorithms [booklet p.35 step 10, p.36 step 5]. | DIR-34 |
+| Q-9 | Are directive names without the dot, `PSW` and `PC` reserved? | Owner: `data`, `string`, `mat`, `entry`, `extern` are reserved for labels and macros [booklet p.29]; `PSW` and `PC` are not (sources silent). | LBL-20, ERR-13, ERR-2 |
+| Q-10 | A macro name inside the body of another macro. | Owner: not expanded; the line is copied as it is and the first pass reports an unknown operation. Implied by [booklet p.31 step 6] and [forum: Must a Macro Contain a Sequence of Instructions and/or Directives?, 25/06/2025]. | MAC-32, ERR-17 |
+| Q-11 | Macro name starting with `_`; register name as a macro name; macro name equal to a label. | Owner: first character must be a letter; a register name is illegal; a label equal to a macro name is an error wherever the two stand, detected in the first pass with the macro table. Implied by [forum: Valid Macro Names, 03/06/2025], [booklet p.25, p.29] and [forum: Should we check if a label name is not a macro name or is it considered a given?, 22/07/2025]. | MAC-33, LBL-21, ERR-2, ERR-6, ERR-14 |
+| Q-12 | Does the pre-assembler check errors (p.25 against p.34)? Is `.am` left after a failure? | It checks the macro name and the `mcro` / `mcroend` lines, finds all such errors, and leaves no `.am`. | MAC-18, MAC-22, MAC-23 |
+| Q-13 | Where the 80-character limit is checked. | The sources leave it to the implementer. Owner (C-2): the pre-assembler; a pre-assembler error. | SYN-2a, SYN-2b, ERR-10 |
+| Q-14 | Label alone on a line; label on a line with another error. | Owner: a label alone is an error (implied by [booklet p.25, p.28, p.35]); a label on an erroneous line is still entered into the symbol table (sources silent). | LBL-22, LBL-23, ERR-45 |
+| Q-15 | Comments after leading whitespace or after a statement. | Not comments; `;` must be the first character of the line. | SYN-9 |
+| Q-16 | Argument with `.as` attached; exit status. | Owner: the argument is always a name without extension, so `x.as` tries `x.as.as` [forum: Input File Name, 22/06/2025]; exit status 0 only when every file assembled without errors, otherwise 1 (sources silent). | CLI-8, CLI-9, ERR-1 |
+| Q-17 | `.string ""`. | Sources silent. Owner: legal; one word holding 0. | DIR-32 |
+| Q-18 | Attribute of a `.mat` symbol (blank on p.37). | "data". | DIR-16 |
+| Q-20 | Rulings reported by the owner from memory. | Each was looked up in the forum text; see section 2.13. | section 2.13 |
+| Q-21 | Duplicate macro names: moderator posts that disagree. | Owner: a second definition is a pre-assembler error. This satisfies all four posts. | MAC-15, MAC-28, ERR-8 |
+| Q-22 | Label in front of `mcro`, `mcroend` or a macro call. | Owner: an error, the stricter reading of [forum: Label at the beginning/end of macro definition, 22/07/2025]. The reporting stage is still open as Q-28. | MAC-34, ERR-9 |
+| Q-24 | The `prn` word in the worked examples. | Owner: `dbaaa` (opcode 13) is settled; it follows from correction 1. | INS-1, section 4.3 |
+| Q-25 | Global const tables (`CLAUDE.md` against the moderator). | Owner: the instruction table is `static const`, private to its module, reached through access functions; no global arrays. [forum: Defining Global Variables for Arrays, 14/07/2025; Variables, 30/06/2025] | IMP-1 |
 
 ### 6.3 Slips in the booklet (not questions)
 
@@ -1487,4 +1818,5 @@ bits 6-9" (fixed by correction 4). p.34: "the pre-assembler stage contains no
 error detection stage" (narrowed by MAC-18). p.35: "starting at address 0" and
 "IC ← 0" (overridden by ALG-2). p.37: blank attribute for `M1` (DIR-16).
 p.23: jsr pushes "PC+2" regardless of the instruction length (run-time
-semantics, outside the assembler).
+semantics, outside the assembler). p.45: `ps.ob` prints `daaaa` at address
+109 (section 4.3).
