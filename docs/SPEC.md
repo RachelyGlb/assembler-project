@@ -14,7 +14,7 @@ owner's decision recorded here fixes one of them.
 | `[correction N]` | `docs/corrections.pdf` / `docs/corrections.txt`, the official corrections sheet, items 1 to 4 | Overrides the booklet. |
 | `[forum: <thread title>, <date>]` | `docs/forum.txt`, the course forum Q&A (English; extracted from `docs/Task_14.pdf`, 90 pages) | Highest priority. Only posts marked "Posted by moderator" are rulings; the date is the date of the moderator post (dd/mm/yyyy). Student posts are never rulings; where one is mentioned it is labelled "student post, not a ruling". Names of students are not reproduced here. |
 | `[inferred]` | A conclusion drawn by the spec author | Always accompanied by its reasoning. Not an official statement. |
-| `[owner decision, 2026-11-26]` | A decision of the project owner | Used only where the sources leave a choice to the implementer or are silent. It is always followed by the source that allows the chosen option, or by the statement that the sources are silent. It is binding for code and tests. |
+| `[owner decision, 2026-11-26]`, `[owner decision, 2026-11-27]` | A decision of the project owner, with the date on which it was given | Used only where the sources leave a choice to the implementer or are silent. It is always followed by the source that allows the chosen option, or by the statement that the sources are silent. It is binding for code and tests. |
 
 Precedence, highest first: forum moderator rulings, corrections sheet,
 booklet. A moderator ruling overrides the corrections sheet and the booklet;
@@ -267,7 +267,8 @@ file. No web source and no other solution was used.
   could find in such a file are not reported in the same run. Two later
   decisions narrow "every line": the carriage return of a CR LF line ending
   is not counted (SYN-25), and the lines discarded after a faulty `mcro` line
-  are not checked at all (MAC-38).
+  are not checked at all (MAC-38). What an over-long `mcro` line, `mcroend`
+  line or macro call does to the macro state is fixed by MAC-40.
 - **SYN-24** A last line that is not terminated by a newline character is
   accepted and is treated as a complete line, exactly as if a newline
   followed it. The `.am` file always ends every line with a newline, so the
@@ -291,9 +292,13 @@ file. No web source and no other solution was used.
   for SYN-2 is the number of bytes up to its line terminator, NUL bytes
   included, so a NUL byte cannot hide the rest of a line from the length
   check or from the `.am` file. A line that is both too long and contains a
-  NUL byte gets one message (ERR-R16), the line-length one. [project decision, 2026-11-26, pending the owner's confirmation]
-  The sources are silent: they describe the input as text. Found by the
-  independent correctness review of 2026-11-26 (finding D-1).
+  NUL byte gets one message (ERR-R16), the line-length one. [project decision, 2026-11-26; confirmed by the owner, 2026-11-27]
+  (Q-40). The sources are silent: they describe the input as text. Found by
+  the independent correctness review of 2026-11-26 (finding D-1). Like the
+  line-length check, the NUL check is not made on the lines discarded after
+  a faulty `mcro` line (MAC-38); what a `mcro` line, a `mcroend` line or a
+  macro call that contains a NUL byte does to the macro state is fixed by
+  MAC-40.
 
 ### 2.6 Directives (DIR)
 
@@ -466,9 +471,14 @@ Owner decisions on directives
   field is exactly `.entry` or `.extern`. Any other line follows the
   ordinary rules, so `L:.extern W` is ERR-38 and `L : .extern W` is ERR-16.
   If the directive on such a line has a first-pass error of its own (ERR-34,
-  ERR-53), only the error is printed (ERR-R16). The line is a line of the
-  `.am` file, so the warning of a macro body line is printed once per call
-  (ERR-R12).
+  ERR-14, ERR-53), only the error is printed (ERR-R16). The line is a line
+  of the `.am` file, so the warning of a macro body line is printed once per
+  call (ERR-R12). If the first pass ends without errors and the second pass
+  then finds an error on the same line, which can only be `L: .entry X` with
+  `X` undefined (ERR-51) or declared `.extern` (ERR-52), both messages are
+  printed: the warning by the first pass and, later in the output, the error
+  by the second pass (ERR-R16, ERR-R17). [owner decision, 2026-11-27]
+  (Q-34). The sources are silent on the combination.
 - **DIR-36** A symbol that is both defined as a label in the file and
   declared `.extern` (ERR-53, DIR-30) is reported by the first pass, once,
   on whichever of the two lines comes second: on the label definition line
@@ -589,6 +599,34 @@ Owner decisions on labels
   symbol" messages elsewhere. Its value does not matter, because no output
   is written for a file with errors (ERR-R6). [owner decision, 2026-11-26]
   (Q-14). The sources are silent.
+- **LBL-24** A name that stands where an operand must be a label is checked
+  by the first pass against the rules of a label name, on the line that uses
+  it. The positions are: an operand in direct mode, the name in front of the
+  brackets of a matrix operand, and the operand of `.entry` or `.extern`.
+  The name is an error on that line when it is ill-formed (LBL-2: it does
+  not start with a letter, or it contains a character that is not a letter
+  or a digit), when it is longer than 30 characters (LBL-3), or when it is a
+  reserved word (LBL-20). For an instruction operand the error is ERR-49;
+  for the operand of `.entry` or `.extern` it is ERR-34. One exception
+  follows from the addressing modes: a bare `r0` to `r7` as an instruction
+  operand is a register operand (ADR), not a name, so it is not this error;
+  a register name in front of matrix brackets (`r1[r2][r3]`) or as the
+  operand of `.entry` or `.extern` is a reserved word and is this error. A
+  name such as `r8` or `PSW` is not reserved and is a label reference
+  (LBL-16, LBL-20). In addition, the operand of `.extern` must not be the
+  name of a macro defined anywhere in the same file: that is ERR-14 on the
+  `.extern` line, because `.extern` enters a symbol into the symbol table
+  and no symbol may have the name of a macro (LBL-21). A macro name used as
+  an instruction operand or as the operand of `.entry` is not a first-pass
+  error: the name can never be defined as a label (ERR-14), so, if the
+  second pass runs, it is reported there as undefined (ERR-50, ERR-51).
+  [owner decision, 2026-11-27] (Q-39). The sources give the rules of a label
+  name [booklet p.28, p.29] and require "and other errors" to be reported
+  [booklet p.34]; they do not name the stage for a name that is used and not
+  defined. The stage can be observed: because these are first-pass errors,
+  the second pass does not run (ERR-R7) and its errors on other lines are
+  not printed in the same run. A test that has no other erroneous line
+  asserts only that the line gets exactly one error.
 
 ### 2.8 Syntax details (SYN, part 2)
 
@@ -697,7 +735,8 @@ Numbers and strings
 - **MAC-6** Assumption, no check needed: there are no nested macro
   definitions. [booklet p.25]
 - **MAC-7** Assumption, no check needed: every `mcro` line has a closing
-  `mcroend` line. [booklet p.25, p.34]
+  `mcroend` line. [booklet p.25, p.34] This project checks it all the same
+  and reports a definition that is not closed (MAC-39).
 - **MAC-8** Assumption, no check needed: a macro is always defined before it
   is called. [booklet p.25]
 - **MAC-9** Must check: the macro name is valid; the name of an instruction or
@@ -915,8 +954,11 @@ Owner decisions on macros and the pre-assembler
   (MAC-20) or that has the form `L: mcroend` (MAC-36). [owner decision,
   2026-11-26] (gap found in review). The sources are silent: MAC-22 only
   requires that the scan goes on, and MAC-7 allows the assumption that the
-  `mcroend` line exists. Consequences of "no further message": a discarded
-  line longer than 80 characters is not reported (this narrows SYN-2b), and
+  `mcroend` line exists. If no matching `mcroend` line follows, all lines up
+  to the end of the file are discarded in the same way, and the `mcro` line
+  gets no second message (MAC-39). Consequences of "no further message": a
+  discarded line longer than 80 characters or containing a NUL byte is not
+  reported (this narrows SYN-2b and SYN-26), and
   neither is extra text or a label on the closing `mcroend` line (ERR-4,
   ERR-9); a later line whose first field is the faulty name is an ordinary
   line, not a call. These two consequences sit uneasily with two source
@@ -925,220 +967,42 @@ Owner decisions on macros and the pre-assembler
   decision is kept as given and the tension has been reported to the owner
   (section 1). The file fails in either case, because the `mcro` line itself
   is reported.
-
-### 2.10 Two-pass algorithm (ALG)
-
-- **ALG-1** The first pass identifies the symbols and gives each a numeric
-  value (its memory address). The second pass builds the machine code using
-  the symbol values, the opcodes and the register numbers. [booklet p.31,
-  p.32-33]
-- **ALG-2** Code is built to be loaded starting at address 100 (decimal). The
-  initial value of IC is 100. [booklet p.31, p.33, p.38, p.42] p.35 says
-  "starting at address 0" and "IC ← 0"; the forum rules that the first load
-  address is 100. [forum: First Address for Loading into Memory, 08/06/2025]
-- **ALG-3** IC is advanced, after each instruction line, by the number of
-  words the instruction takes, so it always points at the next free cell.
-  [booklet p.33]
-- **ALG-4** The assembler keeps two images: the instruction (code) image and
-  the data image, each indexed by its own counter, IC and DC. Both counters
-  get their initial value when the assembler starts on a source file.
-  [booklet p.39]
-- **ALG-5** In the output machine code the instructions and the data are two
-  separate segments: all instruction words first, then all data words. The
-  input file need not keep them separate. [booklet p.34, p.41, p.42]
-- **ALG-6** At the end of the first pass, the value of every symbol with the
-  attribute "data" is increased by ICF, the final value of IC (equivalently:
-  by the total length of the code plus the load address 100), because the data
-  image is placed right after the code image. [booklet p.36 step 19, p.41,
-  p.42]
-- **ALG-7** In the first pass it is always possible to build: the complete
-  first word of every instruction, the additional word of an immediate operand
-  or a register operand, and the encoding of all data (`.data`, `.string`,
-  `.mat`). Words that depend on a symbol are completed in the second pass.
-  [booklet p.33, p.36]
-- **ALG-8** Both passes read the (expanded) source file from its beginning.
-  [booklet p.35]
-- **ALG-9** First pass, skeleton algorithm (not mandatory) [booklet p.35-36]:
-  1. Initialise IC and DC (the booklet writes `DC ← 0, IC ← 0`; ALG-2 fixes
-     IC at 100).
-  2. Read the next line. At end of file go to 17.
-  3. If the first field is a symbol continue, otherwise go to 5.
-  4. Turn on the "symbol definition" flag.
-  5. If the line is a data-storage directive (`.data`, `.string` or `.mat`)
-     continue, otherwise go to 8.
-  6. If there is a symbol definition, enter it into the symbol table with the
-     attribute "data" and the value DC. If the symbol is already in the table,
-     report an error.
-  7. Identify the kind of data, encode it into the data image, and advance DC
-     by its length. Go to 2.
-  8. If the line is `.extern` or `.entry` continue, otherwise go to 11.
-  9. If it is `.entry`, go to 2 (it is handled in the second pass).
-  10. If it is `.extern`, enter the symbol that appears as its operand into
-      the symbol table with the value 0 and the attribute "external". Go to 2.
-  11. The line is an instruction. If there is a symbol definition, enter it
-      into the symbol table with the attribute "code" and the value IC. If the
-      symbol is already in the table, report an error.
-  12. Look up the operation name in the operation table. If it is not found,
-      report an error in the instruction name.
-  13. Analyse the operands and compute L, the total number of words the
-      instruction takes.
-  14. Build the binary code of the first word and of every additional word
-      that encodes an immediate operand.
-  15. Save the values of IC and L together with the machine code of the
-      instruction.
-  16. `IC ← IC + L`, go to 2.
-  17. The file has been read completely. If errors were found in the first
-      pass, stop here.
-  18. Save the final values of IC and DC as ICF and DCF. They are used to
-      build the output files after the second pass.
-  19. Add ICF to the value of every symbol with the attribute "data".
-  20. Start the second pass.
-- **ALG-10** Second pass, skeleton algorithm (not mandatory) [booklet p.36]:
-  1. Read the next line. At end of file go to 7.
-  2. If the first field is a symbol (label), skip it.
-  3. If the line is `.data`, `.string`, `.mat` or `.extern`, go to 1.
-  4. If the line is `.entry` continue, otherwise go to 6.
-  5. Add the attribute "entry" to the symbol that appears as the operand of
-     the directive. If the symbol is not in the symbol table, report an error.
-     Go to 1.
-  6. Complete the binary encoding of the operand words, according to the
-     addressing modes. For every operand that contains a symbol, find the
-     symbol's value in the symbol table; if it is not there, report an error.
-     If the symbol has the attribute "external", add the address of the
-     relevant word to the list of words that refer to an external symbol. The
-     values of IC and L saved in the first pass may be used. Go to 1.
-  7. The file has been read completely. If errors were found in the second
-     pass, stop here.
-  8. Build the output files.
-- **ALG-11** The assembler processes a line by its type: it ignores empty and
-  comment lines; for an instruction it finds the operation and the addressing
-  modes, reserves the additional words and advances IC; for a directive it
-  acts according to the directive. [booklet p.40-41]
-- **ALG-12** The length of the input program is not known in advance. A
-  maximum size may be assumed **only** for the arrays that hold the
-  machine-code image. Every other structure (symbol table, macro table) must
-  be implemented efficiently and economically, for example with a linked list
-  and dynamic allocation. [booklet p.46] No maximum number of lines in an
-  input file may be assumed. [forum: Input File Line Limit, 14/07/2025]
-- **ALG-13** The skeleton algorithms are not mandatory; what is mandatory is
-  the required output. In particular, all encoding may be done in the second
-  pass. [forum: Two Passes, 30/06/2025; Is it Possible to Encode Only in the
-  Second Pass?, 14/07/2025]
-- **ALG-14** The data image starts immediately after the last instruction
-  word, with no gap. [forum: Data section starting address, 22/07/2025]
-- **ALG-15** Memory overflow must be checked: the program (code plus data) may
-  not go beyond the 256 memory cells. An overflow is an error; it is reported
-  and the assembler goes on looking for further errors. IC and DC
-  are what the check uses. [forum: Memory overflow, 14/07/2025; Memory size,
-  17/07/2025; Questions Regarding the First Pass, 22/06/2025] [inferred] With
-  the load address 100 (ALG-2) and addresses 0..255 (M-4), the limit is
-  code words + data words ≤ 156, that is the last used address ≤ 255. The
-  line on which the error is reported is fixed by ALG-17.
-- **ALG-16** The instructions are only encoded, never executed. No rule
-  requires any particular instruction (for example `stop`) to be present in a
-  program. [forum: Jumping to a Label, 17/06/2025; Must the stop command
-  appear at least once?, 22/07/2025]
-- **ALG-17** Memory overflow (ERR-41) is reported by the first pass, once
-  per file, on the line whose words first make the code length plus the
-  data length exceed the available memory, that is the first instruction or
-  data line after which the running total of code words and data words is
-  greater than 156. The first pass keeps scanning the remaining lines for
-  other errors, but the overflow is not reported again for that file,
-  however many further lines add words. The line number is that of ERR-R12,
-  like every other first-pass message. [owner decision, 2026-11-26]
-  (Q-30 a). The report and the continued scan are required by [forum:
-  Memory overflow, 14/07/2025]; the sources do not say on which line, or how
-  often, the error is reported.
-
-### 2.11 Errors (ERR-R)
-
-- **ERR-R1** The assembler must detect and report syntax errors of the source
-  program, such as: an operation that does not exist, a wrong number of
-  operands, an operand type that does not fit the operation, a register name
-  that does not exist, "and other errors". It also verifies that each symbol
-  is defined exactly once. [booklet p.34]
-- **ERR-R2** Error messages are printed to standard output (`stdout`).
-  [booklet p.34]
-- **ERR-R3** Every error message must state the number of the line in the
-  source file in which the error was found. Line numbering starts at 1.
-  [booklet p.34] The number may be the line number in the original `.as` file
-  or the line number in the expanded `.am` file; both are accepted.
-  [forum: Printing Errors with Line Number in Case of Syntax Error in File,
-  02/07/2025] This project always reports the `.as` line (ERR-R12, section
-  2.14).
-- **ERR-R4** The assembler does not stop after the first error. It continues
-  over the input to find further errors, if any. It must detect and report all
-  erroneous lines of the input. [booklet p.34, p.46]
-- **ERR-R5** Messages should be as detailed as possible, so that one can
-  understand what each error is and where it is. [booklet p.46]
-- **ERR-R6** If the input file has errors, the output files `.ob`, `.ent` and
-  `.ext` are not produced for it. [booklet p.34, p.46]
-- **ERR-R7** If errors were found in the first pass, the second pass is not
-  run. [booklet p.36 step 17]
-- **ERR-R8** The booklet does not require the file name in an error message.
-  It requires only the line number (ERR-R3) and enough detail to locate the
-  error (ERR-R5). [inferred] Since several files can be processed in one run
-  (CLI-1), printing the file name is the natural way to satisfy "where each
-  error is", but it is not a stated rule of the sources. This project prints
-  it (ERR-R13).
-- **ERR-R9** One error message per input line is sufficient; every line of
-  the file must still be examined. [forum: Error reporting, 22/07/2025] The
-  booklet is silent and compatible (p.34, p.46). This project prints exactly
-  one (ERR-R16).
-- **ERR-R10** On a memory allocation failure the assembler reports an error,
-  releases all allocated memory, and the entire program exits (it does not
-  move on to the next file). [forum: Linked List for Macros, 17/06/2025;
-  Memory Allocation Errors, 14/07/2025; Memory allocation error, 22/07/2025]
-  The booklet is silent.
-- **ERR-R11** Every file opened while processing a source file is closed when
-  the processing of that file ends. [forum: A Few Questions That Came Up,
-  22/07/2025]
-- **ERR-R12** The line number in every message, from every stage, is the
-  number of the line in the original `.as` file, counted from 1. The first
-  and second pass obtain it from the line map of MAC-35. For a line that
-  comes from a macro body, the number reported is that of the body line
-  inside the macro definition, which is the place the author has to fix. A
-  macro that is called N times can therefore produce the same message, with
-  the same line number, N times; this repetition is accepted. [owner
-  decision, 2026-11-26] (choice C-1), allowed by [forum: Printing Errors with
-  Line Number in Case of Syntax Error in File, 02/07/2025]; the repetition is
-  accepted by [booklet p.34] (MAC-13).
-- **ERR-R13** Message format. Every error is one line on `stdout` of the form
-  `<name>.as:<line>: error: <text>`, where `<name>` is the command-line
-  argument exactly as given (CLI-8) and `<line>` is the decimal line number
-  of ERR-R12 with no padding. There is no space before the line number, and
-  exactly one space after the colon that follows the line number and after
-  the colon that follows `error`. An error that has no line (for example a
-  file that cannot be opened) has the form `<name>.as: error: <text>`. The
-  `<text>` strings are not fixed by this file; they must be informative
-  (ERR-R5), contain no newline, and may change without a change to SPEC.
-  Tests compare the file name, the line number and the severity of each
-  message, never its wording. [owner decision, 2026-11-26] (Q-3). The
-  sources fix only `stdout` and the line number [booklet p.34] and give no
-  format.
-- **ERR-R14** A warning has the same format as an error with the word
-  `warning:` in place of `error:`. A warning is not an error: it does not
-  suppress the output files and does not change the exit status (CLI-9).
-  [owner decision, 2026-11-26] (Q-3). The assembler prints exactly one kind
-  of warning, WRN-1 (DIR-35, section 5.6).
-- **ERR-R15** `stdout` carries only diagnostics. Nothing is printed for a
-  file that assembles without errors and without warnings: no success
-  notice, no progress text, no file name. Every line the assembler writes
-  to `stdout` is an error line (ERR-R13), a warning line (ERR-R14) or the
-  usage line of CLI-10. [owner decision, 2026-11-26] (Q-26). The sources
-  are silent on what is printed when there is no error.
-- **ERR-R16** Exactly one message is printed for a line that has one or more
-  errors: the first error found on that line. Once an error has been found
-  the rest of the line is not examined further. Which of several errors is
-  "the first found" is not fixed by this file (the wording of messages is
-  free, ERR-R13); what is fixed is that the line yields one message. "Line"
-  means a line as a stage reads it: a line of the `.as` file for the
-  pre-assembler, a line of the `.am` file for the passes, so a macro body
-  line with an error still yields one message per call (ERR-R12). A warning
-  and an error on the same line do not arise by construction; if they
-  would, only the error is printed. [owner decision, 2026-11-26] (Q-29),
-  the minimum allowed by "one error per line is sufficient" [forum: Error
-  reporting, 22/07/2025].
+- **MAC-39** A macro definition that is not closed is a pre-assembler error
+  (ERR-48). If the end of the file is reached while the definition opened by
+  an otherwise valid `mcro` line is still open, that is, no matching
+  `mcroend` line (the first following line whose first field is `mcroend`,
+  MAC-20, or that has the form `L: mcroend`, MAC-36) stands between the
+  `mcro` line and the end of the file, the error is reported once, with the
+  `.as` line number of the `mcro` line. It is a pre-assembler error like any
+  other: no `.am` file is left and the passes do not run for that file
+  (MAC-23). The macro is not usable anyway, because every line after the
+  `mcro` line is a body line and none can be a call. [owner decision,
+  2026-11-27] (Q-38). The sources do not require the check (MAC-7 lets the
+  assembler assume that the `mcroend` line exists, [booklet p.25, p.34]) and
+  do not forbid it. Interactions:
+  - "Otherwise valid" means that the `mcro` line has had no message of its
+    own. A `mcro` line that has already been reported, whether as a faulty
+    `mcro` line (ERR-2, ERR-3, ERR-5, ERR-6, ERR-8; MAC-38), for a label in
+    front of it (ERR-9; MAC-37), for its length (ERR-10; MAC-40) or for a
+    NUL byte (ERR-46; MAC-40), gets no second message when its definition
+    is not closed (ERR-R16, one message per line). The lines after it are
+    still swallowed up to the end of the file, discarded or recorded
+    according to MAC-38 and MAC-40.
+  - A matching `mcroend` line closes the definition also when that line is
+    itself faulty (ERR-4, ERR-9, or an over-long or NUL line, MAC-40); the
+    definition is then closed and ERR-48 does not apply.
+  - Order of the messages. The error is known only when the end of the file
+    is reached, and its message is printed then: it is the last
+    pre-assembler message of the file, although the line number it carries
+    is that of the `mcro` line. It therefore stands after the messages of
+    the lines of its body. Such messages can exist: every line after the
+    unclosed `mcro` line is a body line and is not examined (MAC-24), but a
+    body line of a recorded definition is still checked for its length and
+    for NUL bytes, so it can produce ERR-10 or ERR-46, and nothing else.
+    This is the one case in which the pre-assembler's messages for a file
+    are not in ascending order of `.as` line number (ERR-R17). [project
+    decision, 2026-11-27: the owner decided the error and its line, not
+    its place among the messages]
 - **ERR-R17** Order of the messages on `stdout`. Files are reported in
   command-line order; the message for a file that cannot be opened (ERR-1)
   stands at the place of that file. Within a file the messages are either
@@ -1151,7 +1015,14 @@ Owner decisions on macros and the pre-assembler
   they are not always ascending: a macro body line repeats its number at
   every call, later in the output. Warnings are ordered like errors, as
   first-pass messages. [owner decision, 2026-11-26] (Q-29). The sources are
-  silent on the order.
+  silent on the order. Two consequences of later decisions: the warning and
+  the second-pass error of one `.entry` line (ERR-R16, Q-34) are not
+  adjacent, since the warning stands among the first-pass messages and the
+  error among the second-pass messages; and the message for a definition
+  that is not closed (ERR-48) is printed when the end of the file is
+  reached, after the messages of its body lines, although it carries the
+  line number of the `mcro` line (MAC-39).
+  [owner decision, 2026-11-27] (Q-34, Q-38).
 
 ### 2.12 Command line (CLI) and output files (OUT)
 
@@ -1210,8 +1081,8 @@ Owner decisions on macros and the pre-assembler
   of ERR-R13 (ERR-47), no `.am`, `.ob`, `.ent` or `.ext` file is left for
   it, the assembler continues with the next argument and the exit status is
   1. The same holds if reading the `.am` file back in a pass fails. A read
-  error is never taken for the end of the file. [project decision, 2026-11-26, pending the owner's confirmation]
-  Follows the intent of CLI-6 and CLI-11. Found by the independent
+  error is never taken for the end of the file. [project decision, 2026-11-26; confirmed by the owner, 2026-11-27]
+  (Q-40). Follows the intent of CLI-6 and CLI-11. Found by the independent
   correctness review of 2026-11-26 (finding D-2).
 - **OUT-1** Output file names are the input name as given on the command line
   plus a suffix: `.am` (after macro expansion), `.ob` (object), `.ent`
@@ -1777,8 +1648,9 @@ exist afterwards and which other errors are reported in the same run.
 listed by the booklet in so many words; they follow from a stated syntax rule
 together with the general duty to report syntax errors ("and other errors",
 p.34; "detect and report all erroneous lines", p.46). Conditions that exist
-because of an owner decision are marked [owner decision, 2026-11-26]; the
-rule cited next to the mark gives the source that allows the decision.
+because of an owner decision are marked [owner decision, 2026-11-26] or
+[owner decision, 2026-11-27]; the rule cited next to the mark gives the
+source that allows the decision.
 
 ERR IDs are stable. ERR-10 keeps its number although it moved from the first
 pass to the pre-assembler, and ERR-53 keeps its number although it is listed
@@ -1814,7 +1686,11 @@ status 0 (CLI-10).
 | ERR-7 | Extra non-whitespace text after the macro name on a macro call line. | Pre-assembler | MAC-30 [owner decision, 2026-11-26], allowed by [forum: Macro Mention with Additional Text, 14/07/2025] |
 | ERR-8 | A `mcro` line defines a macro name that is already in the macro table (second definition of the same name). Reported on the second `mcro` line. | Pre-assembler | MAC-28 [owner decision, 2026-11-26]; MAC-15 [forum: Do We Need to Check Multiple Definitions of the Same Macro?, 08/06/2025; Whitespace in Macros, 18/06/2025; Error Reporting, 25/06/2025] |
 | ERR-9 | A label definition in front of `mcro`, in front of `mcroend`, or in front of a macro call: the first field of the line ends with `:` and the second field is `mcro`, `mcroend` or the name of a macro defined so far. `L: mcro x` still opens the definition of `x`, `L: mcroend` still closes the open definition, `L: m` is not expanded. | Pre-assembler | MAC-34, MAC-36, MAC-37 [owner decision, 2026-11-26]; MAC-21 [forum: Label at the beginning/end of macro definition, 22/07/2025] |
-| ERR-10 | A line of the `.as` file is longer than 80 characters, not counting the newline or the carriage return of a CR LF line ending (SYN-25). Applies to every line, whatever its kind, except the lines discarded after a faulty `mcro` line (MAC-38). | Pre-assembler | SYN-2 [booklet p.25]; SYN-2a [forum: Line with More Than 80 Characters: Does the Assembler Ignore the Line and Continue or Stop?, 14/07/2025]; SYN-2b [owner decision, 2026-11-26] |
+| ERR-10 | A line of the `.as` file is longer than 80 characters, not counting the newline or the carriage return of a CR LF line ending (SYN-25). Applies to every line, whatever its kind, except the lines discarded after a faulty `mcro` line (MAC-38). An over-long `mcro` line, `mcroend` line or macro call keeps its effect on the macro state (MAC-40). | Pre-assembler | SYN-2 [booklet p.25]; SYN-2a [forum: Line with More Than 80 Characters: Does the Assembler Ignore the Line and Continue or Stop?, 14/07/2025]; SYN-2b [owner decision, 2026-11-26]; MAC-40 [owner decision, 2026-11-27] |
+| ERR-48 | A macro definition is not closed: the end of the file is reached and no `mcroend` line has closed the definition opened by an otherwise valid `mcro` line. Reported once, with the line number of the `mcro` line, as the last pre-assembler message of the file. A `mcro` line that already has a message of its own (ERR-2, ERR-3, ERR-5, ERR-6, ERR-8, ERR-9, ERR-10, ERR-46) gets no second one. | Pre-assembler | MAC-39 [owner decision, 2026-11-27]; the sources allow the check to be omitted (MAC-7 [booklet p.25, p.34]) |
+
+ERR-46 (a line with a NUL byte) is a pre-assembler error as well; it is
+listed in 5.3 under its number.
 
 Effect of any pre-assembler error: report it with its `.as` line number, keep
 scanning the file for further pre-assembler errors (MAC-22), leave no `.am`
@@ -1830,15 +1706,20 @@ message; the faulty macro is not entered into the macro table, and for
 ERR-8 the first definition remains in force (MAC-38) [owner decision,
 2026-11-26].
 
-Not checked, by stated assumption: nested definitions (MAC-6), a missing
-`mcroend` (MAC-7), use before definition (MAC-8), text before `mcroend`
-(MAC-20), the content of the macro body (MAC-24). A test must not contain
-these inputs, because the behaviour for them is undefined. The same holds,
-until the owner decides, for the inputs of Q-35 and Q-36 (section 6.1).
+Not checked, by stated assumption: nested definitions (MAC-6), use before
+definition (MAC-8), text before `mcroend` (MAC-20), the content of the macro
+body (MAC-24). A test must not contain these inputs, because the behaviour
+for them is undefined. A missing `mcroend` (MAC-7) is no longer in this
+list: it is checked and is ERR-48 (MAC-39). The behaviour of an over-long
+or NUL `mcro` line, `mcroend` line or macro call is defined by MAC-40 and
+may be tested.
 
 Not a pre-assembler matter: a macro name on a line inside a macro body is
 not expanded (MAC-32); the line reaches the first pass and fails there as
-ERR-17. A label that has the name of a macro is ERR-14, in the first pass.
+ERR-17. So does a line whose first field is `mcroend` while no definition
+is open (MAC-41); only its labelled form `L: mcroend` is a pre-assembler
+error (ERR-9). A label that has the name of a macro is ERR-14, in the first
+pass.
 
 ### 5.3 First pass
 
@@ -1847,10 +1728,10 @@ ERR-17. A label that has the name of a macro is ERR-14, in the first pass.
 | ERR-11 | Label does not start with a letter, or contains a character that is not a letter or a digit. | First pass | LBL-2 [booklet p.28] [inferred as an error] |
 | ERR-12 | Label longer than 30 characters. | First pass | LBL-3 [booklet p.28] [inferred as an error] |
 | ERR-13 | Label is a reserved word: an operation name, a directive name without the dot (`data`, `string`, `mat`, `entry`, `extern`), a register name `r0` to `r7`, `mcro` or `mcroend`. `PSW` and `PC` are legal labels. | First pass | LBL-7 [booklet p.29]; LBL-14 [forum: Reserved Words for Label Names, 03/06/2025]; LBL-20 [owner decision, 2026-11-26] |
-| ERR-14 | Label has the name of a macro defined anywhere in the same file, before or after the label. Reported on the line of the label definition; the first pass consults the macro table. | First pass | LBL-8 [booklet p.29]; LBL-15 [forum: Should we check if a label name is not a macro name or is it considered a given?, 22/07/2025]; LBL-21 [owner decision, 2026-11-26] |
+| ERR-14 | Label has the name of a macro defined anywhere in the same file, before or after the label. Reported on the line of the label definition; the first pass consults the macro table. The same error is reported on a `.extern` line whose operand is the name of a macro (LBL-24). | First pass | LBL-8 [booklet p.29]; LBL-15 [forum: Should we check if a label name is not a macro name or is it considered a given?, 22/07/2025]; LBL-21 [owner decision, 2026-11-26]; LBL-24 [owner decision, 2026-11-27] |
 | ERR-15 | Label (symbol) already in the symbol table: defined twice. Reported on the line of the later definition. (A label whose name was declared `.extern` earlier is ERR-53, not ERR-15.) | First pass | LBL-5 [booklet p.29, p.34, p.35 steps 6, 11] |
 | ERR-16 | Whitespace between a label and its colon. | First pass | LBL-4 [booklet p.29] [inferred as an error] |
-| ERR-17 | Unknown operation name. This includes a macro name left unexpanded inside a macro body (MAC-32). | First pass | SYN-11 [booklet p.34, p.35 step 12]; MAC-32 [owner decision, 2026-11-26] |
+| ERR-17 | Unknown operation name. This includes a macro name left unexpanded inside a macro body (MAC-32) and a `mcroend` line that closes no definition (MAC-41). | First pass | SYN-11 [booklet p.34, p.35 step 12]; MAC-32 [owner decision, 2026-11-26]; MAC-41 [owner decision, 2026-11-27] |
 | ERR-18 | Unknown directive name. | First pass | [inferred] from DIR-2, DIR-4. |
 | ERR-19 | Too many operands for the operation. | First pass | SYN-14 [booklet p.34] |
 | ERR-20 | Too few operands for the operation. | First pass | SYN-14 [booklet p.34] ("wrong number of operands") |
@@ -1867,20 +1748,21 @@ ERR-17. A label that has the name of a macro is ERR-14, in the first pass.
 | ERR-31 | `.string` operand is not a legal string: missing opening or closing double quote, or characters outside the quotes. (`.string ""` is legal, DIR-32.) | First pass | DIR-9, SYN-22 [booklet p.26, p.29] [inferred as an error] |
 | ERR-32 | `.string` contains a character outside ASCII 32..126. | First pass | SYN-22 [booklet p.29] [forum: What is Considered a Valid String for .string?, 25/06/2025] |
 | ERR-33 | `.mat` dimensions malformed: missing brackets, whitespace between `]` and `[`, or a dimension that is not a number (for example a register). | First pass | DIR-12 [booklet p.27]; DIR-26, DIR-27 [forum: Can .mat be Defined by Non-Constant Values?, 14/07/2025; Spaces within square brackets in a matrix, 22/07/2025] |
-| ERR-34 | `.entry` or `.extern` with a missing operand, more than one operand, or an operand that is not a legal label name. | First pass | DIR-17, DIR-20 [booklet p.27] [inferred as an error] |
+| ERR-34 | `.entry` or `.extern` with a missing operand, more than one operand, or an operand that is not a legal label name: ill-formed, longer than 30 characters, or a reserved word (LBL-24). | First pass | DIR-17, DIR-20 [booklet p.27] [inferred as an error]; LBL-24 [owner decision, 2026-11-27] |
 | ERR-35 | Missing whitespace between an operation name and its first operand. | First pass | SYN-12 [booklet p.28] [inferred as an error] |
 | ERR-36 | Missing whitespace between a directive name and its operand. | First pass | SYN-17 [forum: Spaces in directives, 22/07/2025] |
 | ERR-37 | In a matrix operand, whitespace between the label and the first `[`, or between `]` and the second `[`. | First pass | SYN-18 [forum: Spaces within square brackets in a matrix, 22/07/2025] |
 | ERR-38 | Missing whitespace between the colon of a label definition and the statement. | First pass | LBL-18 [forum: Is Whitespace Required Between a Colon (After a Label Name) and an Instruction/Directive?, 03/06/2025] |
 | ERR-39 | A number outside its signed range: an immediate operand outside -128..127, or a `.data` / `.mat` value outside -512..511. | First pass | SYN-21 [forum: Maximum size of numbers using 2's complement method, 14/07/2025]; bounds [owner decision, 2026-11-26], implied by [booklet p.19, p.21, p.26] |
 | ERR-40 | `.mat` with more initial values than rows × columns. | First pass | DIR-25 [forum: Initializing a Matrix with More Values Than its Size, 14/07/2025] |
-| ERR-41 | Memory overflow: code plus data go beyond address 255 (more than 156 words in total). Reported once per file, on the line whose words first make the code length plus the data length exceed 156. The scan for other errors continues, but the overflow is not reported again. | First pass | ALG-15 [forum: Memory overflow, 14/07/2025; Memory size, 17/07/2025]; line and "once" ALG-17 [owner decision, 2026-11-26] |
+| ERR-41 | Memory overflow: code plus data go beyond address 255 (more than 156 words in total). Reported once per file, on the line whose words first make the code length plus the data length exceed 156. The scan for other errors continues, but the overflow is not reported again. A line with another error adds no words to the total, so it is never the line that reports the overflow (ALG-18). | First pass | ALG-15 [forum: Memory overflow, 14/07/2025; Memory size, 17/07/2025]; line and "once" ALG-17 [owner decision, 2026-11-26]; ALG-18 [owner decision, 2026-11-27] |
 | ERR-42 | Matrix operand with no label before the brackets. | First pass | SYN-23 [forum: Matrix definition, 17/07/2025] |
 | ERR-43 | A `;` that is not the first character of the line (comment after leading whitespace or after a statement); it is reported as whatever syntax error the text produces. | First pass | SYN-9 [forum: Line with More Than 80 Characters: Does the Assembler Ignore the Line and Continue or Stop?, 14/07/2025] |
 | ERR-44 | A `.mat` dimension that is 0, negative, or written with a sign (`+2`, `-2`). | First pass | DIR-33 [owner decision, 2026-11-26]; the sources are silent |
 | ERR-45 | A label definition with nothing after the colon. | First pass | LBL-22 [owner decision, 2026-11-26], implied by [booklet p.25, p.28, p.35] |
-| ERR-46 | A source line contains a NUL byte. | Pre-assembler | SYN-26 [project decision, 2026-11-26, pending the owner's confirmation] |
-| ERR-47 | A source file opens but cannot be read (a directory, or a read error). Reported without a line number. | Driver and any stage that reads | CLI-12 [project decision, 2026-11-26, pending the owner's confirmation] |
+| ERR-46 | A source line contains a NUL byte. Not checked on the lines discarded after a faulty `mcro` line (MAC-38); a `mcro` line, `mcroend` line or macro call with a NUL byte keeps its effect on the macro state (MAC-40). | Pre-assembler | SYN-26 [project decision, 2026-11-26; confirmed by the owner, 2026-11-27] |
+| ERR-47 | A source file opens but cannot be read (a directory, or a read error). Reported without a line number. | Driver and any stage that reads | CLI-12 [project decision, 2026-11-26; confirmed by the owner, 2026-11-27] |
+| ERR-49 | An instruction operand that stands where a label is expected (an operand in direct mode, or the name in front of the brackets of a matrix operand) is not a legal label name: ill-formed, longer than 30 characters, or a reserved word. A bare `r0` to `r7` is a register operand and not this error. (ERR-48 is a pre-assembler error and is listed in 5.2.) | First pass | LBL-24 [owner decision, 2026-11-27]; LBL-2, LBL-3, LBL-7 [booklet p.28, p.29] |
 | ERR-53 | A symbol declared `.extern` is also defined as a label in the same file, in either order. Reported once, on whichever of the two lines comes second: on the label definition line if the `.extern` line came first (then it is ERR-53, not ERR-15), and on the `.extern` line if the label definition came first. | First pass, for both orders | DIR-30 [forum: Translation Unit and Second Pass Errors, 02/07/2025]; [booklet p.35 steps 6, 11]; stage and line DIR-36 [owner decision, 2026-11-26] |
 
 Rules that apply to all first-pass errors:
@@ -1892,6 +1774,8 @@ Rules that apply to all first-pass errors:
   (ERR-R7), so the errors of section 5.4 are not reported in the same run.
   No `.ob`, `.ent`, `.ext` are written (ERR-R6); the `.am` file stays
   (OUT-11). The exit status is 1 (CLI-9).
+- A line with a first-pass error adds no words to the code length or to the
+  data length (ALG-18).
 
 ### 5.4 Second pass
 
@@ -1902,6 +1786,13 @@ Rules that apply to all first-pass errors:
 | ERR-52 | The same symbol is declared both `.entry` and `.extern`. Reported on the `.entry` line, where the second pass meets the conflict [inferred]. | Second pass | DIR-23 [booklet p.28]; stage from [booklet p.36 step 5] (`.entry` is handled only in the second pass) |
 
 ERR-53 is a first-pass error and is listed in 5.3 (DIR-36).
+
+A `.entry` line with a label in front (`L: .entry X`) has already had the
+warning WRN-1 from the first pass when the second pass reports ERR-51 or
+ERR-52 on it; both messages are printed (ERR-R16, DIR-35) [owner decision,
+2026-11-27]. A macro name used as an instruction operand or as the operand
+of `.entry` is reported here, as ERR-50 or ERR-51, because it can never be
+a defined symbol (LBL-24).
 
 Effect: no `.ob`, `.ent`, `.ext` are written (ERR-R6); the `.am` file stays
 (OUT-11). The exit status is 1 (CLI-9).
@@ -1923,8 +1814,11 @@ warning.
 | WRN-1 | A label in front of `.entry` or `.extern`: the first field of the line ends with `:` and the second field is `.entry` or `.extern`. The label is ignored completely: it is not entered into the symbol table and its name is not validated. The directive is processed as usual. | First pass | DIR-18, DIR-22 [booklet p.27, p.28]; DIR-35 [owner decision, 2026-11-26] |
 
 If the directive on that line has a first-pass error, only the error is
-printed (ERR-R16). A file whose only messages are warnings assembles: all
-its output files are written and it does not make the exit status 1.
+printed (ERR-R16). If the first pass ends without errors and the second pass
+finds ERR-51 or ERR-52 on that line, the warning has been printed and the
+error is printed as well (DIR-35) [owner decision, 2026-11-27]. A file
+whose only messages are warnings assembles: all its output files are
+written and it does not make the exit status 1.
 
 ### 5.7 Constructs that are legal and must not be reported
 
@@ -1952,68 +1846,30 @@ error.
 
 ## 6. Open questions
 
-This section lists what is still undecided and what was settled. Q numbers
+This section lists what is still undecided (nothing) and what was settled. Q numbers
 are stable: a question
 that has been settled keeps its number in the table in 6.2, so that older
 references still resolve. Q-19 and Q-23 were never used.
 
 ### 6.1 Still open
 
-Q-26 to Q-33 were decided by the owner on 2026-11-26 and are in the table in
-6.2. Nothing that the owner has been asked is open.
+Nothing is open. Q-26 to Q-33 were decided by the owner on 2026-11-26 and
+Q-34 to Q-40 on 2026-11-27; all of them are in the table in 6.2, and every
+decision is a rule in section 2 with its tag. No input is kept away from the
+tests any longer on the ground that its behaviour is undecided; the inputs
+that remain undefined are those the sources allow the assembler to assume
+away (section 5.2, "Not checked, by stated assumption").
 
-Writing those decisions down exposed four small gaps, listed here. They are
-not decided: the sources are silent on each, and each waits for the owner.
-Until an item is decided, tests must stay away from the input it describes;
-each item says how.
-
-- **Q-34 A warning from the first pass and an error from the second pass on
-  the same line.** `L: .entry X` gets the warning WRN-1 in the first pass
-  (DIR-35). If `X` is undefined (ERR-51) or external (ERR-52), the second
-  pass finds an error on the same line. ERR-R16 says that a warning and an
-  error on one line "do not arise by construction" and that otherwise only
-  the error is printed; ERR-R17 prints the first-pass messages before the
-  second pass runs. Options: print both (the warning, later the error); or
-  hold the warning back and print only the error. Until decided: no test
-  puts a label in front of a `.entry` line whose operand produces ERR-51 or
-  ERR-52.
-- **Q-35 A line longer than 80 characters that is also a `mcro` line, a
-  `mcroend` line or a macro call.** The line gets one message (ERR-10,
-  ERR-R16) and "is not examined further"; whether it still opens or closes
-  a definition, as a faulty `mcro` line does (MAC-38), is not stated, and it
-  decides which later lines produce messages. Until decided: no test makes
-  such a line longer than 80 characters.
-- **Q-36 A `mcroend` line while no definition is open,** plain or with a
-  label in front (`L: mcroend`, which MAC-36 recognises and reports). MAC-7
-  covers only the opposite case. Options: a pre-assembler error; or an
-  ordinary line that fails in the first pass as an unknown operation. Until
-  decided: no test contains a `mcroend` line without an open definition.
-- **Q-37 Memory overflow together with other errors.** ALG-17 counts the
-  words of each line. Not stated: how many words a line with another error
-  adds to the running total, and what is printed when the line that crosses
-  the limit has another error as well (ERR-R16 allows one message for that
-  line, which may then not be the overflow). Until decided: a test for
-  ERR-41 has no other erroneous line at or before the line that crosses the
-  limit.
-- **Q-38 A `mcro` with no `mcroend` before the end of the file.** The
-  booklet lets the assembler assume that every definition is closed (MAC
-  rules), so nothing requires a check. Today the unfinished body is swallowed
-  silently and the rest of the file assembles. Options: report an error on
-  the `mcro` line at the end of the file; or keep the assumption. Until
-  decided: no test leaves a definition open.
-- **Q-39 A reserved word, an ill-formed name or an over-long name used as an
-  operand, and a macro name used as the operand of `.extern`.** No ERR-n
-  names these. Today each is a first-pass error on that line. The
-  alternative is an "undefined symbol" error in the second pass (ERR-50).
-  Until decided: tests assert only that the line gets exactly one error.
-- **Q-40 Confirmation of SYN-26 and CLI-12.** Both were decided by the
-  project after the review found the gaps; the owner has not yet confirmed
-  them.
+One decision of 2026-11-27 describes behaviour that the code did not have
+when it was recorded: Q-38 (MAC-39, ERR-48). The others confirm the
+behaviour the code already had.
 
 ### 6.2 Resolved
 
-"Owner" in the last column means [owner decision, 2026-11-26]; the rule cited
-gives the source that allows or implies the decision.
+"Owner" in the Resolution column means [owner decision, 2026-11-26] for the
+rows up to Q-33 and the row without a number, and [owner decision,
+2026-11-27] for Q-34 to Q-40; the rule cited gives the source that allows
+or implies the decision.
 
 | Q | Question | Resolution | Rule |
 |---|---|---|---|
@@ -2048,6 +1904,13 @@ gives the source that allows or implies the decision.
 | Q-31 | Output files left from an earlier run. | Owner: before processing a file every existing `.am`, `.ob`, `.ent` and `.ext` of that name is removed. This goes beyond [forum: Deleting previous .ent and .ext files, 17/07/2025], which only says deleting is not required. | OUT-14, OUT-12 |
 | Q-32 | Last line without a newline; CR LF line endings; a source with no statements. | Sources silent. Owner: (a) accepted as a complete line, `.am` always ends each line with a newline; (b) the CR before the newline is removed, is not counted toward 80 and is not copied, `.am` has LF endings, a CR elsewhere is whitespace; (c) assembles, `.ob` holds the single line `a<TAB>a`. | SYN-24, SYN-25, OUT-15, MAC-29 |
 | Q-33 | A file that cannot be opened among several files. | Owner: reported (ERR-1), the assembler continues with the next argument, exit status 1. Follows [forum: Input File Name, 22/06/2025] and CLI-3. | CLI-11, ERR-1 |
+| Q-34 | A warning from the first pass and an error from the second pass on the same line (`L: .entry X` with `X` undefined or external). | Sources silent. Owner: both are printed, the warning (WRN-1) by the first pass and the error (ERR-51 or ERR-52) by the second pass; the warning is not held back. Within the first pass an error still replaces the warning. | ERR-R16, ERR-R17, DIR-35, WRN-1 |
+| Q-35 | A line longer than 80 characters (or with a NUL byte) that is also a `mcro` line, a `mcroend` line or a macro call. | Sources silent. Owner: the behaviour of the code is the rule. One message (ERR-10 or ERR-46); the `mcro` line still opens the definition and, if otherwise correct, defines the macro; the `mcroend` line still closes it; the call is not expanded. | MAC-40, ERR-10, ERR-46 |
+| Q-36 | A `mcroend` line while no definition is open. | Sources silent. Owner: the behaviour of the code is the rule. Not a pre-assembler error: the line is copied to the `.am` file and the first pass rejects it as an unknown operation. The labelled form `L: mcroend` remains the pre-assembler error of MAC-36. | MAC-41, ERR-17, ERR-9 |
+| Q-37 | Memory overflow together with other errors. | Sources silent. Owner: the behaviour of the code is the rule. A line with a first-pass error adds no words, so it never also reports the overflow; ERR-41 falls on the first error-free line that crosses the limit. | ALG-18, ALG-17, ERR-41 |
+| Q-38 | A `mcro` with no `mcroend` before the end of the file. | The sources allow the assumption that it does not happen (MAC-7). Owner: a pre-assembler error, reported once on the `mcro` line when the end of the file is reached, only for a `mcro` line that has no message of its own. Project decision: the message is printed last among the pre-assembler messages of the file. New behaviour at the date of the decision. | MAC-39, ERR-48 |
+| Q-39 | A reserved word, an ill-formed name or an over-long name used as an operand; a macro name as the operand of `.extern`. | Sources silent on the stage. Owner: first-pass errors on that line. An instruction operand is ERR-49, the operand of `.entry` or `.extern` is ERR-34, a macro name after `.extern` is ERR-14. | LBL-24, ERR-49, ERR-34, ERR-14 |
+| Q-40 | Confirmation of the project decisions on a NUL byte in a line and on a source file that cannot be read. | Owner: both confirmed as written. | SYN-26, CLI-12, ERR-46, ERR-47 |
 | (none) | Lines after a faulty `mcro` line (gap found in review). | Sources silent. Owner: one message on the `mcro` line; the lines up to and including the matching `mcroend` are discarded as a body without further messages; the macro is not entered into the table, and for a duplicate name the first definition remains in force. | MAC-38 |
 
 ### 6.3 Slips in the booklet (not questions)
