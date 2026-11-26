@@ -55,10 +55,6 @@ desktop.ini
 
 # 🔒 הגנה מפני קבצים מחוץ לתיקיית הפרויקט
 # (זה מונע הוספה בטעות של קבצים מתיקיות אב)
-../
-../../
-../../../
-/*/*
 
 # 🚫 קבצי Makefile זמניים
 Makefile_*
@@ -100,3 +96,10 @@ config.local
 .env
 *.key
 *.pem
+# Course materials: not ours to publish
+docs/booklet.pdf
+docs/booklet.txt
+docs/Task_14.docx
+docs/forum.txt
+docs/corrections.pdf
+docs/corrections.txt
