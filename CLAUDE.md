@@ -6,7 +6,8 @@ This repository holds a two-pass assembler written in C90 for an imaginary
 being rebuilt as a public portfolio piece: correct against the spec, modular,
 clean, and shipped with a public demo.
 
-Read this file, `docs/SPEC.md` and `docs/PROGRESS.md` before doing anything.
+Read this file, `docs/SPEC.md`, `docs/PROGRESS.md` and `docs/MODULES.md`
+before doing anything.
 
 ## Sources of truth
 
@@ -55,7 +56,8 @@ state of the build and of the test suite.
   table, first pass, second pass, line parsing (syntax), symbol table, memory
   image (code and data), base-4 encoding, output-file writing, error
   reporting, instruction table, shared definitions. The split may be adapted
-  to the existing code, with a recorded reason.
+  to the existing code, with a recorded reason. The current split, the reason
+  for each adaptation and every public function are in `docs/MODULES.md`.
 - Hide implementations: define each data structure's struct in its `.c` file.
   The `.h` exposes only an opaque type and access functions. Code that uses
   the symbol table must not know whether it is an array or a linked list.

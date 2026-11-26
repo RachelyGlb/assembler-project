@@ -229,8 +229,8 @@ static Boolean require_name(Parser *parser, const char *name,
         return TRUE;
     case NAME_TOO_LONG:
         return fail(parser,
-                    "the %s '%s' is longer than the %d characters of a "
-                    "label name",
+                    "the %s '%s' is longer than %d characters, the limit of "
+                    "a label name",
                     role, name, MAX_NAME_LENGTH);
     case NAME_RESERVED:
         return fail(parser,
@@ -578,9 +578,57 @@ static void parse_symbol_operand(Parser *parser, const char *text)
 }
 
 /*
+ * Tells whether a piece of the line holds a character that is not a letter.
+ *   start  the first character of the piece
+ *   end    the position just after the piece
+ * Returns TRUE when it does; FALSE for an empty piece.
+ */
+static Boolean has_non_letter(const char *start, const char *end)
+{
+    const char *position;
+
+    for (position = start; position < end; position++)
+    {
+        if (!isalpha((unsigned char)*position))
+        {
+            return TRUE;
+        }
+    }
+    return FALSE;
+}
+
+/*
+ * Finds the longest directive name with which a longer word begins.
+ *   start  the first character of the word, the dot
+ *   end    the position just after the word
+ * Returns the length of that name, the dot included, or 0 when the word
+ * begins with no directive name.
+ */
+static size_t directive_prefix_length(const char *start, const char *end)
+{
+    size_t length = (size_t)(end - start);
+
+    while (length > 0)
+    {
+        length--;
+        if (directive_find_text(start, length) != DIRECTIVE_NONE)
+        {
+            return length;
+        }
+    }
+    return 0;
+}
+
+/*
  * Reports a first field that starts with a dot and is not a directive: a
  * directive glued to its operand (SYN-17, ERR-36) or an unknown directive
- * (ERR-18).
+ * (ERR-18). The rule: the field is a glued directive when it begins with a
+ * directive name, the longest one that fits, and either what follows the
+ * name in the field holds a character that is not a letter, or the field is
+ * the last of the line, so that the operand can only be the part stuck to
+ * the name. So ".data5" and ".externlabel" are a directive with its operand
+ * stuck to it, while ".strings" in front of an operand is a wrong name: an
+ * unknown directive.
  *   parser  the parser of the line
  *   start   the first character of the field, the dot
  *   end     the position just after the field
@@ -588,18 +636,13 @@ static void parse_symbol_operand(Parser *parser, const char *text)
 static void report_unknown_directive(Parser *parser, const char *start,
                                      const char *end)
 {
-    const char *name_end = start + 1;
+    size_t name_length = directive_prefix_length(start, end);
 
-    /* A directive name is a dot and lowercase letters (DIR-2). */
-    while (islower((unsigned char)*name_end))
-    {
-        name_end++;
-    }
-    if (directive_find_text(start, (size_t)(name_end - start)) !=
-        DIRECTIVE_NONE)
+    if (name_length > 0 &&
+        (has_non_letter(start + name_length, end) || util_is_blank(end)))
     {
         fail(parser, "white space is missing after the directive name '%.*s'",
-             (int)(name_end - start), start);
+             (int)name_length, start);
         return;
     }
     fail(parser, "unknown directive '%.*s'", (int)(end - start), start);
@@ -1018,8 +1061,37 @@ static void parse_operands(Parser *parser, const char *text)
 }
 
 /*
+ * Finds the longest operation name with which a longer word begins.
+ *   start        the first character of the word
+ *   end          the position just after the word
+ *   instruction  receives the row of that operation, or NULL when the word
+ *                begins with no operation name
+ * Returns the length of that name, or 0 when there is none.
+ */
+static size_t operation_prefix_length(const char *start, const char *end,
+                                      const Instruction **instruction)
+{
+    size_t length = (size_t)(end - start);
+
+    *instruction = NULL;
+    while (length > 0 && *instruction == NULL)
+    {
+        length--;
+        *instruction = instruction_find_text(start, length);
+    }
+    return length;
+}
+
+/*
  * Reports a first field that is not an operation name: an operation glued
- * to its operand (SYN-12, ERR-35) or an unknown operation (ERR-17).
+ * to its operand (SYN-12, ERR-35) or an unknown operation (ERR-17). The
+ * rule: the field is a glued operation when it begins with an operation
+ * name, the longest one that fits, when that operation takes operands, and
+ * when what follows the name in the field holds a character that is not a
+ * letter. So "movr1,r2" and "inc1" are an operation with its operand stuck
+ * to it, while "stopper" (nothing can be stuck to "stop", which takes no
+ * operand) and "increase" (letters only: a misspelt name, or the name of a
+ * macro left unexpanded, MAC-32) are unknown operations.
  *   parser  the parser of the line
  *   start   the first character of the field
  *   end     the position just after the field
@@ -1027,14 +1099,12 @@ static void parse_operands(Parser *parser, const char *text)
 static void report_unknown_operation(Parser *parser, const char *start,
                                      const char *end)
 {
-    const char *name_end = start;
+    const Instruction *instruction;
+    const char *name_end = start + operation_prefix_length(start, end,
+                                                           &instruction);
 
-    /* An operation name is made of lowercase letters (ENC-14). */
-    while (islower((unsigned char)*name_end))
-    {
-        name_end++;
-    }
-    if (instruction_find_text(start, (size_t)(name_end - start)) != NULL)
+    if (instruction != NULL && instruction_operand_count(instruction) > 0 &&
+        has_non_letter(name_end, end))
     {
         fail(parser, "white space is missing after the operation name '%.*s'",
              (int)(name_end - start), start);

@@ -5,9 +5,11 @@
  * (SYN-2b), collects the macro definitions, replaces every macro call by
  * the body of the macro and writes the result to the .am file (MAC-29). It
  * reports every pre-assembler error of SPEC section 5.2 (ERR-2 to ERR-10)
- * with its .as line number, one message per line (ERR-R16), and does not
- * stop at the first (MAC-22). It does not look into macro bodies and does
- * not check labels (MAC-24); the passes do that.
+ * and a line that contains a NUL byte (ERR-46), each with its .as line
+ * number, one message per line (ERR-R16), and does not stop at the first
+ * (MAC-22). A source file that cannot be read is reported without a line
+ * number (ERR-47). The pre-assembler does not look into macro bodies and
+ * does not check labels (MAC-24); the passes do that.
  */
 #ifndef PREASSEMBLER_H
 #define PREASSEMBLER_H

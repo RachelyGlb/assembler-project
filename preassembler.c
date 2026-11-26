@@ -377,6 +377,36 @@ static Boolean start_definition(Scan *scan, const char *rest, Boolean quiet)
 }
 
 /*
+ * Reports a label in front of "mcro", in front of "mcroend" or in front of
+ * a macro call (ERR-9), with the text of the one that the line has.
+ *   scan  the scan
+ *   info  the classification of the line; its labelled member is TRUE
+ */
+static void report_labelled_line(const Scan *scan, const LineInfo *info)
+{
+    switch (info->kind)
+    {
+    case LINE_MACRO_START:
+        errors_report(scan->errors, scan->line_number,
+                      "a label is not allowed in front of '"
+                      MACRO_START_KEYWORD "'");
+        break;
+    case LINE_MACRO_END:
+        errors_report(scan->errors, scan->line_number,
+                      "a label is not allowed in front of '"
+                      MACRO_END_KEYWORD "'");
+        break;
+    default:
+        /* Only a macro call is left: a plain line is never labelled. */
+        errors_report(scan->errors, scan->line_number,
+                      "a label is not allowed in front of the call of the "
+                      "macro '%s'",
+                      macro_name(info->macro));
+        break;
+    }
+}
+
+/*
  * Handles a line outside a macro definition.
  *   scan   the scan
  *   line   the line, without its terminator
@@ -389,10 +419,7 @@ static Boolean handle_outside(Scan *scan, const char *line, Boolean quiet)
 
     if (info.labelled && !quiet)
     {
-        errors_report(scan->errors, scan->line_number,
-                      "a label is not allowed in front of '"
-                      MACRO_START_KEYWORD "', '" MACRO_END_KEYWORD
-                      "' or a macro call");
+        report_labelled_line(scan, &info);
         quiet = TRUE;
     }
     if (info.kind == LINE_MACRO_START)
@@ -445,9 +472,7 @@ static Boolean handle_recording(Scan *scan, const char *line, Boolean quiet)
     }
     if (info.labelled)
     {
-        errors_report(scan->errors, scan->line_number,
-                      "a label is not allowed in front of '"
-                      MACRO_END_KEYWORD "'");
+        report_labelled_line(scan, &info);
     }
     else if (!util_is_blank(info.rest))
     {

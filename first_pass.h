@@ -10,8 +10,8 @@
  * It reports every first-pass error of SPEC section 5.3 and the warning
  * WRN-1 (section 5.6), with .as line numbers (ERR-R12), one message per
  * line (ERR-R16), in the order of the .am file (ERR-R17). The syntax errors
- * among them are found by the syntax module, which this pass calls for
- * every line.
+ * among them are found by the syntax module: the am_reader module, which
+ * walks over the file for this pass, calls it for every line.
  */
 #ifndef FIRST_PASS_H
 #define FIRST_PASS_H

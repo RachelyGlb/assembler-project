@@ -5,18 +5,61 @@ then continue with the next phase."
 
 ## Current state
 
-- **Phase 0 (Understand), Phase 1 (Tests), Phase 2 (Diagnose): finished
-  2026-11-26.** The owner approved the Phase 2 plan, the answers to the open
-  questions and the publication items on 2026-11-26.
-- **Phase 3 (Correctness): finished 2026-11-26.** `make` has zero warnings,
-  `make test` prints `passed 175, failed 0, total 175`, and valgrind reports
-  no errors and no leaks on valid, failing and mixed runs (checked by the
-  orchestrator on `ps nosuch example1 undefined_symbol one_message_per_line`).
-- **Phase 4 (Clean-up): in progress.** Two independent reviews of the rebuilt
-  code are the starting point: correctness beyond the suite, and code quality
-  against the coding rules. Each finding gets its own fixer or refactorer.
-  Phase 4 ends with a module table and a STOP for the owner's approval.
-- Working branch: `claude/project-thread-l0vj7x`.
+- **Phases 0 to 3: finished 2026-11-26.**
+- **Phase 4 (Clean-up): finished 2026-11-27. STOPPED, waiting for the owner's
+  approval before Phase 5 (demo).**
+- State of the code at the stop: `make` prints no warning; `make test` prints
+  `passed 195, failed 0, total 195`; the final independent review
+  (`docs/audit/REVIEW_FINAL.md`) found no blocker: valgrind is clean on all
+  195 test inputs, 1,156 allocation-failure injections all end cleanly, and
+  60,400 fuzz iterations under AddressSanitizer and UBSan gave no crash, hang
+  or report. No function is longer than 40 lines.
+- The modules, their responsibilities, public functions and dependencies are
+  in `docs/MODULES.md`.
+- Working branch: `claude/project-thread-l0vj7x`. Nothing has been merged to
+  `main`; there is no pull request yet.
+- Next: Phase 5 (demo, GitHub Actions, GitHub Pages, README). `README.md`
+  still describes the old code and must be rewritten there. `CHANGELOG.md`
+  was deleted because it described files that no longer exist; the git
+  history is the change log.
+
+## Phase 4: what was done
+
+1. Two independent reviews of the rebuilt code: correctness beyond the suite
+   (`docs/audit/REVIEW_CORRECTNESS.md`: 9,000 generated programs compared with
+   a reference model, 10,000 fuzz runs) and code quality
+   (`docs/audit/REVIEW_QUALITY.md`).
+2. The correctness review found two defects, both on non-text input. Twenty
+   test cases were added (`tests`, 195 cases in all) and each defect was fixed
+   by its own fixer: `d46595a` a read error is no longer taken for the end of
+   the file (SPEC CLI-12); `86c7dc3` a NUL byte no longer hides the rest of a
+   line (SPEC SYN-26).
+3. Seven refactoring steps, each proven to leave every output file, exit
+   status and diagnostic position byte-identical: `0a1aae4` header hygiene;
+   `df11822` one array-growing helper (`util_reserve`) and lookups by text and
+   length; `9c7be47` the shared `.am` loop (`am_reader`) and one place that
+   removes output files; `efb9ff0` directive dispatch table and single-place
+   layout knowledge; `449743d` one print path and one style for all
+   diagnostics (the style is recorded at the top of `errors.h`); `bec4566`
+   `statement` split from `syntax`; and a last step for the comment and
+   wording findings of the final review.
+
+## Waiting for the owner at the Phase 4 stop
+
+- Approval of the code and of the module structure (`docs/MODULES.md`).
+- Confirmation that building by pipeline stage, which also rewrote
+  `symbol_table`, `output_writer`, the error module and `assembler.c`, was
+  acceptable (see Phase 3 below).
+- SPEC section 6.1, with what the code does today: Q-34, Q-35, Q-36, Q-37
+  (see Phase 3 below); Q-38 a `mcro` with no `mcroend` swallows the rest of
+  the file silently (recommended: report an error on the `mcro` line); Q-39 a
+  reserved word, an ill-formed or over-long name used as an operand, and a
+  macro name given to `.extern`, are first-pass errors; Q-40 confirmation of
+  SYN-26 (NUL byte is an error) and CLI-12 (unreadable source is an error),
+  which the project decided after the review.
+- Whether `docs/audit/` (the diagnosis of the old code and the reviews) should
+  stay in the public repository. Recommended: keep it; it documents how the
+  rebuild was done.
 
 ## Phase 3: what was done
 
@@ -46,7 +89,7 @@ returns a `StageResult` (`STAGE_OK`, `STAGE_ERRORS`, `STAGE_FATAL`); an
 allocation failure is returned up to the driver as `STAGE_FATAL` and never
 handled by calling `exit` inside a module; every diagnostic goes through
 `errors_report` or `errors_warn` with the line translated by
-`line_map_source_line`; each pass parses a line with the one parser, `statement_parse`, and a
+`line_map_source_line`; each pass parses a line with the one parser, `syntax_parse`, and a
 syntax error yields a statement for which `statement_is_valid` is false.
 
 Readings the code makes where SPEC section 6.1 is still open (to be confirmed

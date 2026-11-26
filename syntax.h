@@ -5,7 +5,7 @@
  * statement.h): the optional label, the kind of the statement, the
  * operation and its operands with their addressing modes and values, or the
  * directive with its data words or its symbol. It reports every syntax
- * error that can be decided from the line alone (SPEC sections 5.3, ERR-11
+ * error that can be decided from the line alone (SPEC section 5.3, ERR-11
  * to ERR-13, ERR-16 to ERR-40, ERR-42 to ERR-45), one message per line
  * (ERR-R16), through the errors module. Errors that need the symbol table,
  * the macro table or the memory counters are left to the passes.
