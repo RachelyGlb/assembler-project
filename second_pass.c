@@ -11,7 +11,7 @@
 
 #include "am_reader.h"
 #include "encoder.h"
-#include "syntax.h"
+#include "statement.h"
 
 /* The address bits of a word that refers to an external symbol (ENC-8). */
 #define EXTERNAL_ADDRESS 0
@@ -51,7 +51,8 @@ static void mark_entry(SecondPass *pass, const Statement *statement)
     if (symbol_kind(symbol) == SYMBOL_EXTERNAL)
     {
         errors_report(pass->errors, pass->line_number,
-                      "the symbol '%s' is declared both '.entry' and '.extern'",
+                      "the symbol '%s' is declared both '.entry' and "
+                      "'.extern'",
                       name);
         return;
     }

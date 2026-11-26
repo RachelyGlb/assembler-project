@@ -9,6 +9,7 @@
 
 #include <stdlib.h>
 
+#include "syntax.h"
 #include "util.h"
 
 /*
@@ -24,7 +25,7 @@ static Boolean handle_line(const char *line, int line_number,
                            ErrorContext *errors, StatementHandler handle,
                            void *argument)
 {
-    Statement *statement = statement_parse(line, line_number, errors);
+    Statement *statement = syntax_parse(line, line_number, errors);
     Boolean memory_left;
 
     if (statement == NULL)

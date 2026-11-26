@@ -17,7 +17,7 @@
 #include "common.h"
 #include "errors.h"
 #include "line_map.h"
-#include "syntax.h"
+#include "statement.h"
 
 /*
  * The type of a function that am_reader_for_each calls for a statement.

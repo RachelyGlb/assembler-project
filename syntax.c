@@ -8,7 +8,10 @@
  * error. A Parser carries what all of them need. The first error ends the
  * parse (ERR-R16); the statement is then marked as not valid.
  *
- * See syntax.h for the contracts of the public functions.
+ * The statement is filled and asked through the functions of statement.h
+ * only; its structure is not known here.
+ *
+ * See syntax.h for the contract of the public function.
  */
 #include "syntax.h"
 
@@ -17,6 +20,8 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "common.h"
+#include "instruction_table.h"
 #include "util.h"
 
 /* The characters of the assembly language that the parser looks for. */
@@ -61,20 +66,6 @@
 /* The word that ends the characters of a string in memory (DIR-10). */
 #define STRING_TERMINATOR 0
 
-/* The numbers of words of the parts of an instruction (ADR-14). */
-#define FIRST_WORD_COUNT 1
-#define SIMPLE_OPERAND_WORDS 1
-#define MATRIX_OPERAND_WORDS 2
-
-/*
- * The position of the index word among the two additional words of a
- * matrix operand (ADR-7).
- */
-#define MATRIX_INDEX_WORD 1
-
-/* The first size of the array of data values. */
-#define VALUES_INITIAL_CAPACITY 8
-
 /* What a name is on its line, for the messages about names. */
 #define ROLE_LABEL "label"
 #define ROLE_OPERAND "operand"
@@ -91,33 +82,6 @@ typedef enum
     NAME_TOO_LONG,   /* More than MAX_NAME_LENGTH characters. */
     NAME_RESERVED    /* A reserved word (LBL-20). */
 } NameStatus;
-
-/* One operand of an instruction. */
-typedef struct
-{
-    AddressingMode mode; /* The addressing mode. */
-    int value;           /* The immediate value or the register number. */
-    char *symbol;        /* The name as written (not immediate); owned. */
-    int row_register;    /* The row register of a matrix operand. */
-    int column_register; /* The column register of a matrix operand. */
-} Operand;
-
-/* One parsed line. */
-struct Statement
-{
-    StatementKind kind;             /* The kind of the statement. */
-    Boolean valid;                  /* FALSE once an error was reported. */
-    char *label;                    /* The legal label, or NULL; owned. */
-    Boolean label_ignored;          /* A label before .entry or .extern. */
-    const Instruction *instruction; /* The operation, or NULL. */
-    int operand_count;              /* The number of operands parsed. */
-    Operand operands[MAX_OPERAND_COUNT]; /* The operands, as written. */
-    char *directive_symbol;         /* The operand of .entry/.extern; owned. */
-    int *values;                    /* The listed data values; owned. */
-    int value_count;                /* The number of listed values. */
-    size_t value_capacity;          /* The number of elements allocated. */
-    int data_count;                 /* The number of data words taken. */
-};
 
 /*
  * What an operand of each addressing mode is, in the words of a message;
@@ -148,7 +112,6 @@ typedef struct
     DirectiveKind directive; /* The directive. */
     StatementKind kind;      /* The kind of statement it makes. */
     DirectiveParser parse;   /* The function that parses its operands. */
-    Boolean stores_data;     /* TRUE when it adds words to the data image. */
     Boolean ignores_label;   /* TRUE when a label in front is ignored. */
 } DirectiveRule;
 
@@ -171,7 +134,7 @@ static Boolean fail(Parser *parser, const char *format, ...)
     errors_report_list(parser->errors, parser->line_number, format,
                        arguments);
     va_end(arguments);
-    parser->statement->valid = FALSE;
+    statement_mark_invalid(parser->statement);
     return FALSE;
 }
 
@@ -322,26 +285,18 @@ static Boolean read_integer(const char *start, const char *end, long *value)
 }
 
 /*
- * Appends one value to the data values of the statement.
+ * Appends one value to the data words of the statement.
  *   parser  the parser of the line; it notes an allocation failure
  *   value   the value to append
  * Returns FALSE when memory is exhausted.
  */
 static Boolean append_value(Parser *parser, int value)
 {
-    Statement *statement = parser->statement;
-    int *values = (int *)util_reserve(statement->values,
-                                      &statement->value_capacity,
-                                      (size_t)statement->value_count + 1,
-                                      VALUES_INITIAL_CAPACITY, sizeof(int));
-
-    if (values == NULL)
+    if (!statement_add_data_value(parser->statement, value))
     {
         parser->no_memory = TRUE;
         return FALSE;
     }
-    statement->values = values;
-    statement->values[statement->value_count++] = value;
     return TRUE;
 }
 
@@ -425,20 +380,18 @@ static Boolean parse_number_list(Parser *parser, const char *text,
 }
 
 /*
- * Parses the operands of .data (DIR-5 to DIR-7, ERR-28 to ERR-30).
+ * Parses the operands of .data: every value of the list is one data word
+ * (DIR-5 to DIR-7, ERR-28 to ERR-30).
  *   parser  the parser of the line
  *   text    the text after the directive name
  */
 static void parse_data(Parser *parser, const char *text)
 {
-    if (parse_number_list(parser, text, FALSE))
-    {
-        parser->statement->data_count = parser->statement->value_count;
-    }
+    parse_number_list(parser, text, FALSE);
 }
 
 /*
- * Stores the characters of a string and the terminating zero as data values
+ * Stores the characters of a string and the terminating zero as data words
  * (DIR-10) and checks that every character is printable ASCII (ERR-32).
  *   parser  the parser of the line
  *   start   the first character of the string, after the opening quote
@@ -499,10 +452,7 @@ static void parse_string(Parser *parser, const char *text)
                      "the string");
         return;
     }
-    if (store_string(parser, open + 1, close))
-    {
-        parser->statement->data_count = parser->statement->value_count;
-    }
+    store_string(parser, open + 1, close);
 }
 
 /*
@@ -566,6 +516,7 @@ static void parse_mat(Parser *parser, const char *text)
     const char *position = util_skip_spaces(text);
     int rows;
     int columns;
+    int listed;
 
     position = parse_dimension(parser, position, &rows);
     if (position == NULL)
@@ -578,13 +529,15 @@ static void parse_mat(Parser *parser, const char *text)
     {
         return;
     }
-    if (statement->value_count > rows * columns)
+    listed = statement_data_count(statement);
+    if (listed > rows * columns)
     {
-        fail(parser, "the matrix has %d values but room for only %d",
-             statement->value_count, rows * columns);
+        fail(parser, "the matrix has %d values but room for only %d", listed,
+             rows * columns);
         return;
     }
-    statement->data_count = rows * columns;
+    /* The cells without a listed value are zero (DIR-13, DIR-24). */
+    statement_extend_data(statement, rows * columns);
 }
 
 /*
@@ -610,7 +563,8 @@ static void parse_symbol_operand(Parser *parser, const char *text)
     {
         return;
     }
-    parser->statement->directive_symbol = name;
+    /* The statement owns the name from here on and frees it. */
+    statement_set_directive_symbol(parser->statement, name);
     if (!require_name(parser, name, ROLE_OPERAND))
     {
         return;
@@ -652,16 +606,15 @@ static void report_unknown_directive(Parser *parser, const char *start,
 }
 
 /*
- * The directives of the parser, one row each (DIR-4): what a .data, .string
- * or .mat directive stores gives its label a data address (DIR-8, DIR-11,
- * DIR-16), and a label in front of .entry or .extern is ignored (DIR-35).
+ * The directives of the parser, one row each (DIR-4). A label in front of
+ * .entry or .extern is ignored (DIR-35).
  */
 static const DirectiveRule directive_rules[] = {
-    {DIRECTIVE_DATA, STATEMENT_DATA, parse_data, TRUE, FALSE},
-    {DIRECTIVE_STRING, STATEMENT_STRING, parse_string, TRUE, FALSE},
-    {DIRECTIVE_MAT, STATEMENT_MAT, parse_mat, TRUE, FALSE},
-    {DIRECTIVE_ENTRY, STATEMENT_ENTRY, parse_symbol_operand, FALSE, TRUE},
-    {DIRECTIVE_EXTERN, STATEMENT_EXTERN, parse_symbol_operand, FALSE, TRUE}};
+    {DIRECTIVE_DATA, STATEMENT_DATA, parse_data, FALSE},
+    {DIRECTIVE_STRING, STATEMENT_STRING, parse_string, FALSE},
+    {DIRECTIVE_MAT, STATEMENT_MAT, parse_mat, FALSE},
+    {DIRECTIVE_ENTRY, STATEMENT_ENTRY, parse_symbol_operand, TRUE},
+    {DIRECTIVE_EXTERN, STATEMENT_EXTERN, parse_symbol_operand, TRUE}};
 
 /*
  * Finds the row of a directive whose name is a piece of the line.
@@ -701,20 +654,19 @@ static void parse_directive(Parser *parser, const char *start)
         report_unknown_directive(parser, start, end);
         return;
     }
-    parser->statement->kind = rule->kind;
+    statement_set_kind(parser->statement, rule->kind);
     rule->parse(parser, end);
 }
 
 /*
  * Parses an immediate operand: '#' and, attached to it, a legal integer in
- * the range of eight bits (ADR-2, ERR-24, ERR-39).
- *   parser   the parser of the line
- *   text     the position of the '#'
- *   operand  receives the operand
+ * the range of eight bits (ADR-2, ERR-24, ERR-39), and adds it to the
+ * statement.
+ *   parser  the parser of the line
+ *   text    the position of the '#'
  * Returns the position just after the operand, or NULL after an error.
  */
-static const char *parse_immediate(Parser *parser, const char *text,
-                                   Operand *operand)
+static const char *parse_immediate(Parser *parser, const char *text)
 {
     const char *end = token_end(text);
     long value;
@@ -735,8 +687,7 @@ static const char *parse_immediate(Parser *parser, const char *text,
              (int)(end - text), text, IMMEDIATE_MIN, IMMEDIATE_MAX);
         return NULL;
     }
-    operand->mode = ADDRESSING_IMMEDIATE;
-    operand->value = (int)value;
+    statement_add_immediate_operand(parser->statement, (int)value);
     return end;
 }
 
@@ -782,15 +733,16 @@ static const char *parse_index(Parser *parser, const char *text,
 /*
  * Parses the two indices of a matrix operand, after its label (ADR-6,
  * SYN-18, ERR-25, ERR-37).
- *   parser   the parser of the line
- *   text     the position of the first opening bracket
- *   operand  receives the index registers and the mode
+ *   parser  the parser of the line
+ *   text    the position of the first opening bracket
+ *   row     receives the number of the register of the first index
+ *   column  receives the number of the register of the second index
  * Returns the position just after the operand, or NULL after an error.
  */
-static const char *parse_matrix(Parser *parser, const char *text,
-                                Operand *operand)
+static const char *parse_indices(Parser *parser, const char *text, int *row,
+                                 int *column)
 {
-    const char *position = parse_index(parser, text, &operand->row_register);
+    const char *position = parse_index(parser, text, row);
 
     if (position == NULL)
     {
@@ -806,7 +758,7 @@ static const char *parse_matrix(Parser *parser, const char *text,
                            "expected");
         return NULL;
     }
-    position = parse_index(parser, position, &operand->column_register);
+    position = parse_index(parser, position, column);
     if (position == NULL)
     {
         return NULL;
@@ -817,49 +769,76 @@ static const char *parse_matrix(Parser *parser, const char *text,
                      "operand");
         return NULL;
     }
-    operand->mode = ADDRESSING_MATRIX;
     return position;
 }
 
 /*
- * Parses an operand that starts with a name: a register (ADR-8), a label
- * (ADR-4) or a label with two indices (ADR-6). A name such as r8 is a label
- * (LBL-16).
- *   parser   the parser of the line
- *   text     the first character of the name
- *   operand  receives the operand
+ * Parses an operand that names a label, alone (ADR-4) or with two indices
+ * (ADR-6), and adds it to the statement.
+ *   parser  the parser of the line
+ *   name    the name as written, a string on the heap; the statement owns
+ *           it after a success, and it stays the caller's after an error
+ *   end     the position just after the name in the line
  * Returns the position just after the operand, or NULL after an error.
  */
-static const char *parse_named_operand(Parser *parser, const char *text,
-                                       Operand *operand)
+static const char *parse_label_operand(Parser *parser, char *name,
+                                       const char *end)
 {
-    const char *end = text;
+    int row;
+    int column;
 
-    while (!ends_token(*end) && *end != OPEN_BRACKET)
-    {
-        end++;
-    }
-    operand->symbol = copy_piece(parser, text, end);
-    if (operand->symbol == NULL)
+    if (!require_name(parser, name, ROLE_OPERAND))
     {
         return NULL;
     }
     if (*end != OPEN_BRACKET)
     {
-        operand->value = register_number(operand->symbol);
-        if (operand->value != NOT_A_REGISTER)
-        {
-            operand->mode = ADDRESSING_REGISTER;
-            return end;
-        }
+        statement_add_direct_operand(parser->statement, name);
+        return end;
     }
-    if (!require_name(parser, operand->symbol, ROLE_OPERAND))
+    end = parse_indices(parser, end, &row, &column);
+    if (end != NULL)
+    {
+        statement_add_matrix_operand(parser->statement, name, row, column);
+    }
+    return end;
+}
+
+/*
+ * Parses an operand that starts with a name: a register (ADR-8), a label
+ * (ADR-4) or a label with two indices (ADR-6), and adds it to the
+ * statement. A name such as r8 is a label (LBL-16).
+ *   parser  the parser of the line
+ *   text    the first character of the name
+ * Returns the position just after the operand, or NULL after an error.
+ */
+static const char *parse_named_operand(Parser *parser, const char *text)
+{
+    const char *end = text;
+    char *name;
+
+    while (!ends_token(*end) && *end != OPEN_BRACKET)
+    {
+        end++;
+    }
+    name = copy_piece(parser, text, end);
+    if (name == NULL)
     {
         return NULL;
     }
-    operand->value = 0;
-    operand->mode = ADDRESSING_DIRECT;
-    return (*end == OPEN_BRACKET) ? parse_matrix(parser, end, operand) : end;
+    if (*end != OPEN_BRACKET && register_number(name) != NOT_A_REGISTER)
+    {
+        statement_add_register_operand(parser->statement,
+                                       register_number(name));
+        free(name);
+        return end;
+    }
+    end = parse_label_operand(parser, name, end);
+    if (end == NULL)
+    {
+        free(name);
+    }
+    return end;
 }
 
 /*
@@ -872,18 +851,16 @@ static const char *parse_named_operand(Parser *parser, const char *text,
  */
 static const char *parse_operand(Parser *parser, const char *text)
 {
-    Statement *statement = parser->statement;
-    Operand *operand = &statement->operands[statement->operand_count];
+    const Statement *statement = parser->statement;
     const char *start = util_skip_spaces(text);
-    const char *end;
 
     if (*start == '\0')
     {
-        fail(parser, (statement->operand_count == 0)
+        fail(parser, (statement_operand_count(statement) == 0)
                          ? "an operand is missing; the operation takes %d"
                          : "an operand is missing after the comma; the "
                            "operation takes %d",
-             instruction_operand_count(statement->instruction));
+             instruction_operand_count(statement_instruction(statement)));
         return NULL;
     }
     if (*start == OPERAND_SEPARATOR)
@@ -897,14 +874,9 @@ static const char *parse_operand(Parser *parser, const char *text)
                      "first index");
         return NULL;
     }
-    end = (*start == IMMEDIATE_CHARACTER)
-              ? parse_immediate(parser, start, operand)
-              : parse_named_operand(parser, start, operand);
-    if (end != NULL)
-    {
-        statement->operand_count++;
-    }
-    return end;
+    return (*start == IMMEDIATE_CHARACTER)
+               ? parse_immediate(parser, start)
+               : parse_named_operand(parser, start);
 }
 
 /*
@@ -925,7 +897,8 @@ static const char *expect_comma(Parser *parser, const char *text)
     if (*position == '\0')
     {
         fail(parser, "an operand is missing; the operation takes %d",
-             instruction_operand_count(parser->statement->instruction));
+             instruction_operand_count(
+                 statement_instruction(parser->statement)));
     }
     else if (*position == OPEN_BRACKET)
     {
@@ -955,7 +928,7 @@ static Boolean expect_end(Parser *parser, const char *text)
     {
         return TRUE;
     }
-    if (parser->statement->operand_count == 0)
+    if (statement_operand_count(parser->statement) == 0)
     {
         return fail(parser, "unexpected text after the operation name; the "
                             "operation takes no operands");
@@ -975,7 +948,7 @@ static Boolean expect_end(Parser *parser, const char *text)
     }
     return fail(parser, "unexpected operand after the last one; the "
                         "operation takes only %d",
-                parser->statement->operand_count);
+                statement_operand_count(parser->statement));
 }
 
 /*
@@ -986,15 +959,16 @@ static Boolean expect_end(Parser *parser, const char *text)
 static void check_modes(Parser *parser)
 {
     const Statement *statement = parser->statement;
+    const Instruction *instruction = statement_instruction(statement);
     AddressingMode mode;
     int index;
 
-    for (index = 0; index < statement->operand_count; index++)
+    for (index = 0; index < statement_operand_count(statement); index++)
     {
-        mode = statement->operands[index].mode;
+        mode = statement_operand_mode(statement, index);
         if (statement_operand_is_source(statement, index))
         {
-            if (!instruction_allows_source(statement->instruction, mode))
+            if (!instruction_allows_source(instruction, mode))
             {
                 fail(parser, "the source operand is %s, which the "
                              "operation does not allow",
@@ -1002,8 +976,7 @@ static void check_modes(Parser *parser)
                 return;
             }
         }
-        else if (!instruction_allows_destination(statement->instruction,
-                                                 mode))
+        else if (!instruction_allows_destination(instruction, mode))
         {
             fail(parser, "the destination operand is %s, which the "
                          "operation does not allow",
@@ -1021,7 +994,8 @@ static void check_modes(Parser *parser)
  */
 static void parse_operands(Parser *parser, const char *text)
 {
-    int expected = instruction_operand_count(parser->statement->instruction);
+    int expected = instruction_operand_count(
+        statement_instruction(parser->statement));
     const char *position = text;
     int index;
 
@@ -1076,17 +1050,16 @@ static void report_unknown_operation(Parser *parser, const char *start,
  */
 static void parse_instruction(Parser *parser, const char *start)
 {
-    Statement *statement = parser->statement;
     const char *end = util_skip_field(start);
-
-    statement->instruction =
+    const Instruction *instruction =
         instruction_find_text(start, (size_t)(end - start));
-    if (statement->instruction == NULL)
+
+    if (instruction == NULL)
     {
         report_unknown_operation(parser, start, end);
         return;
     }
-    statement->kind = STATEMENT_INSTRUCTION;
+    statement_set_instruction(parser->statement, instruction);
     parse_operands(parser, end);
 }
 
@@ -1115,13 +1088,15 @@ static const char *skip_ignored_label(Parser *parser, const char *first)
     {
         return first;
     }
-    parser->statement->label_ignored = TRUE;
+    statement_ignore_label(parser->statement);
     return second;
 }
 
 /*
  * Stores the label of the line in the statement when its name is legal,
- * and reports it when it is not (ERR-11, ERR-12, ERR-13).
+ * and reports it when it is not (ERR-11, ERR-12, ERR-13). A name that is
+ * not legal is never stored, so that the label which the first pass defines
+ * for a faulty line is always a legal one (LBL-23).
  *   parser  the parser of the line
  *   start   the first character of the name
  *   colon   the position of the colon that ends the name
@@ -1141,7 +1116,7 @@ static Boolean store_label(Parser *parser, const char *start,
         free(name);
         return FALSE;
     }
-    parser->statement->label = name;
+    statement_set_label(parser->statement, name);
     return TRUE;
 }
 
@@ -1183,13 +1158,13 @@ static const char *parse_label(Parser *parser, const char *first)
     {
         fail(parser, "white space is missing after the colon of the label "
                      "'%s'",
-             parser->statement->label);
+             statement_label(parser->statement));
         return NULL;
     }
     if (util_is_blank(end))
     {
         fail(parser, "a statement is missing after the label '%s'",
-             parser->statement->label);
+             statement_label(parser->statement));
         return NULL;
     }
     return util_skip_spaces(end);
@@ -1207,16 +1182,16 @@ static void parse_line(Parser *parser, const char *line)
     /* A comment is a line whose very first character is ';' (SYN-9). */
     if (line[0] == COMMENT_CHARACTER)
     {
-        parser->statement->kind = STATEMENT_COMMENT;
+        statement_set_kind(parser->statement, STATEMENT_COMMENT);
         return;
     }
     if (util_is_blank(line))
     {
-        parser->statement->kind = STATEMENT_EMPTY;
+        statement_set_kind(parser->statement, STATEMENT_EMPTY);
         return;
     }
     start = skip_ignored_label(parser, util_skip_spaces(line));
-    if (!parser->statement->label_ignored)
+    if (!statement_has_ignored_label(parser->statement))
     {
         start = parse_label(parser, start);
     }
@@ -1234,44 +1209,9 @@ static void parse_line(Parser *parser, const char *line)
     }
 }
 
-/*
- * Creates a statement with nothing in it.
- * Returns the statement, or NULL when memory is exhausted.
- */
-static Statement *statement_create(void)
-{
-    Statement *statement = (Statement *)malloc(sizeof(Statement));
-    int index;
-
-    if (statement == NULL)
-    {
-        return NULL;
-    }
-    statement->kind = STATEMENT_UNKNOWN;
-    statement->valid = TRUE;
-    statement->label = NULL;
-    statement->label_ignored = FALSE;
-    statement->instruction = NULL;
-    statement->operand_count = 0;
-    for (index = 0; index < MAX_OPERAND_COUNT; index++)
-    {
-        statement->operands[index].mode = ADDRESSING_IMMEDIATE;
-        statement->operands[index].value = 0;
-        statement->operands[index].symbol = NULL;
-        statement->operands[index].row_register = 0;
-        statement->operands[index].column_register = 0;
-    }
-    statement->directive_symbol = NULL;
-    statement->values = NULL;
-    statement->value_count = 0;
-    statement->value_capacity = 0;
-    statement->data_count = 0;
-    return statement;
-}
-
 /* Parses one line; see syntax.h. */
-Statement *statement_parse(const char *line, int line_number,
-                           ErrorContext *errors)
+Statement *syntax_parse(const char *line, int line_number,
+                        ErrorContext *errors)
 {
     Parser parser;
 
@@ -1290,204 +1230,4 @@ Statement *statement_parse(const char *line, int line_number,
         return NULL;
     }
     return parser.statement;
-}
-
-/* Frees a statement; see syntax.h. */
-void statement_destroy(Statement *statement)
-{
-    int index;
-
-    if (statement == NULL)
-    {
-        return;
-    }
-    for (index = 0; index < MAX_OPERAND_COUNT; index++)
-    {
-        free(statement->operands[index].symbol);
-    }
-    free(statement->label);
-    free(statement->directive_symbol);
-    free(statement->values);
-    free(statement);
-}
-
-/* Tells whether the line was free of syntax errors; see syntax.h. */
-Boolean statement_is_valid(const Statement *statement)
-{
-    return statement->valid;
-}
-
-/* Returns the kind of a statement; see syntax.h. */
-StatementKind statement_kind(const Statement *statement)
-{
-    return statement->kind;
-}
-
-/* Tells whether a statement stores data words; see syntax.h. */
-Boolean statement_stores_data(const Statement *statement)
-{
-    size_t index;
-
-    for (index = 0; index < ARRAY_LENGTH(directive_rules); index++)
-    {
-        if (directive_rules[index].kind == statement->kind)
-        {
-            return directive_rules[index].stores_data;
-        }
-    }
-    return FALSE;
-}
-
-/* Returns the label defined by the line; see syntax.h. */
-const char *statement_label(const Statement *statement)
-{
-    return statement->label;
-}
-
-/* Tells whether the line has an ignored label; see syntax.h. */
-Boolean statement_has_ignored_label(const Statement *statement)
-{
-    return statement->label_ignored;
-}
-
-/* Returns the operation of an instruction; see syntax.h. */
-const Instruction *statement_instruction(const Statement *statement)
-{
-    return statement->instruction;
-}
-
-/* Returns the number of operands; see syntax.h. */
-int statement_operand_count(const Statement *statement)
-{
-    return statement->operand_count;
-}
-
-/* Tells whether an operand is the source operand; see syntax.h. */
-Boolean statement_operand_is_source(const Statement *statement, int index)
-{
-    /* Only the first of two operands is a source (ENC-1, ENC-9). */
-    return (index == 0 && statement->operand_count == MAX_OPERAND_COUNT)
-               ? TRUE
-               : FALSE;
-}
-
-/* Returns the addressing mode of an operand; see syntax.h. */
-AddressingMode statement_operand_mode(const Statement *statement, int index)
-{
-    return statement->operands[index].mode;
-}
-
-/* Returns the number that an operand carries; see syntax.h. */
-int statement_operand_value(const Statement *statement, int index)
-{
-    return statement->operands[index].value;
-}
-
-/* Returns the symbol that an operand names; see syntax.h. */
-const char *statement_operand_symbol(const Statement *statement, int index)
-{
-    AddressingMode mode = statement->operands[index].mode;
-
-    if (mode != ADDRESSING_DIRECT && mode != ADDRESSING_MATRIX)
-    {
-        return NULL;
-    }
-    return statement->operands[index].symbol;
-}
-
-/* Returns one index register of a matrix operand; see syntax.h. */
-int statement_operand_matrix_register(const Statement *statement, int index,
-                                      MatrixIndex which)
-{
-    return (which == MATRIX_ROW) ? statement->operands[index].row_register
-                                 : statement->operands[index].column_register;
-}
-
-/*
- * Returns the number of additional words that one operand takes when it
- * does not share a word (ADR-14).
- *   operand  the operand
- */
-static int operand_words(const Operand *operand)
-{
-    return (operand->mode == ADDRESSING_MATRIX) ? MATRIX_OPERAND_WORDS
-                                                : SIMPLE_OPERAND_WORDS;
-}
-
-/* Returns where the words of an operand lie; see syntax.h. */
-int statement_operand_word_offset(const Statement *statement, int index)
-{
-    const Operand *first = &statement->operands[0];
-    const Operand *operand = &statement->operands[index];
-
-    /* The first operand follows the first word of the instruction. */
-    if (index == 0)
-    {
-        return FIRST_WORD_COUNT;
-    }
-    /* Two registers share one word (ADR-11); nothing else does (ADR-13). */
-    if (first->mode == ADDRESSING_REGISTER &&
-        operand->mode == ADDRESSING_REGISTER)
-    {
-        return FIRST_WORD_COUNT;
-    }
-    return FIRST_WORD_COUNT + operand_words(first);
-}
-
-/* Returns where the index word of a matrix operand lies; see syntax.h. */
-int statement_operand_index_word_offset(const Statement *statement, int index)
-{
-    return statement_operand_word_offset(statement, index) +
-           MATRIX_INDEX_WORD;
-}
-
-/*
- * Returns the length of an instruction in words (ADR-14): the offset of its
- * last operand plus the words of that operand, or one word when it has no
- * operand.
- *   statement  a valid instruction statement
- */
-static int instruction_words(const Statement *statement)
-{
-    int last = statement->operand_count - 1;
-
-    if (last < 0)
-    {
-        return FIRST_WORD_COUNT;
-    }
-    return statement_operand_word_offset(statement, last) +
-           operand_words(&statement->operands[last]);
-}
-
-/* Returns the number of machine words of a statement; see syntax.h. */
-int statement_word_count(const Statement *statement)
-{
-    if (statement->kind == STATEMENT_INSTRUCTION)
-    {
-        return instruction_words(statement);
-    }
-    return statement_data_count(statement);
-}
-
-/* Returns the number of data words of a directive; see syntax.h. */
-int statement_data_count(const Statement *statement)
-{
-    return statement->data_count;
-}
-
-/* Returns one data word of a directive, as a number; see syntax.h. */
-int statement_data_value(const Statement *statement, int index)
-{
-    /* A cell without a listed value is zero (DIR-13, DIR-24). */
-    if (index < 0 || index >= statement->value_count)
-    {
-        return 0;
-    }
-    return statement->values[index];
-}
-
-/* Returns the symbol of .entry or .extern; see syntax.h. */
-const char *statement_directive_symbol(const Statement *statement)
-{
-    return statement->directive_symbol;
 }

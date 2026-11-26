@@ -33,6 +33,7 @@ SOURCES = am_reader.c \
           preassembler.c \
           reference_list.c \
           second_pass.c \
+          statement.c \
           symbol_table.c \
           syntax.c \
           util.c

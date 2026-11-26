@@ -12,7 +12,7 @@
 #include "am_reader.h"
 #include "encoder.h"
 #include "instruction_table.h"
-#include "syntax.h"
+#include "statement.h"
 
 /* The value of an external symbol in the symbol table (DIR-21). */
 #define EXTERNAL_SYMBOL_VALUE 0
