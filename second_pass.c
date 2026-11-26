@@ -172,6 +172,7 @@ StageResult second_pass(FILE *am_file, const LineMap *lines,
     SecondPass pass;
     char *line = NULL;
     size_t capacity = 0;
+    size_t length; /* Not used: an .am line holds no NUL byte (SYN-26). */
     int am_line = FIRST_LINE_NUMBER;
     int errors_before = errors_count(errors);
     ReadStatus status;
@@ -182,12 +183,12 @@ StageResult second_pass(FILE *am_file, const LineMap *lines,
     pass.errors = errors;
     pass.address = FIRST_LOAD_ADDRESS;
     pass.no_memory = FALSE;
-    status = util_read_line(am_file, &line, &capacity, FALSE);
+    status = util_read_line(am_file, &line, &capacity, &length, FALSE);
     while (status == READ_LINE && !pass.no_memory)
     {
         pass.line_number = line_map_source_line(lines, am_line++);
         handle_line(&pass, line);
-        status = util_read_line(am_file, &line, &capacity, FALSE);
+        status = util_read_line(am_file, &line, &capacity, &length, FALSE);
     }
     free(line);
     if (status == READ_NO_MEMORY || pass.no_memory)

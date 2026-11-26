@@ -82,6 +82,9 @@ char *util_make_file_name(const char *base, const char *extension);
  * that grows as needed. A last line without a newline is a complete line
  * (SYN-24). The newline is not stored. A read error is never taken for the
  * end of the file (CLI-12): the line that was being read is not returned.
+ * A line may hold NUL bytes (SYN-26): they are stored like any other byte,
+ * so the string in the buffer ends at the first of them and only the
+ * length that is returned tells how long the line really is.
  *   file                 the file to read from
  *   buffer               the address of the buffer pointer; *buffer must be
  *                        NULL before the first call and is reused by the
@@ -89,6 +92,9 @@ char *util_make_file_name(const char *base, const char *extension);
  *                        also after READ_END, READ_ERROR and READ_NO_MEMORY.
  *   capacity             the address of the buffer size; *capacity must be
  *                        0 before the first call
+ *   length               receives, with READ_LINE, the number of bytes of
+ *                        the line, NUL bytes included; the line terminator
+ *                        is not counted
  *   drop_carriage_return TRUE to remove a carriage return that stands
  *                        immediately before the newline (SYN-25); this is
  *                        how a source file is read. FALSE keeps it.
@@ -97,6 +103,6 @@ char *util_make_file_name(const char *base, const char *extension);
  * buffer could not grow.
  */
 ReadStatus util_read_line(FILE *file, char **buffer, size_t *capacity,
-                          Boolean drop_carriage_return);
+                          size_t *length, Boolean drop_carriage_return);
 
 #endif /* UTIL_H */

@@ -116,9 +116,9 @@ static Boolean reserve_character(char **buffer, size_t *capacity,
 
 /* Reads the next line of a text file into a growing buffer; see util.h. */
 ReadStatus util_read_line(FILE *file, char **buffer, size_t *capacity,
-                          Boolean drop_carriage_return)
+                          size_t *length, Boolean drop_carriage_return)
 {
-    size_t length = 0;
+    size_t count = 0;
     int character = getc(file);
 
     if (character == EOF)
@@ -128,11 +128,11 @@ ReadStatus util_read_line(FILE *file, char **buffer, size_t *capacity,
     }
     while (character != EOF && character != NEWLINE)
     {
-        if (!reserve_character(buffer, capacity, length))
+        if (!reserve_character(buffer, capacity, count))
         {
             return READ_NO_MEMORY;
         }
-        (*buffer)[length++] = (char)character;
+        (*buffer)[count++] = (char)character;
         character = getc(file);
     }
     /* A line that a failed read cut short is not a line (CLI-12). */
@@ -141,16 +141,17 @@ ReadStatus util_read_line(FILE *file, char **buffer, size_t *capacity,
         return READ_ERROR;
     }
     /* An empty line stores no character, so the buffer may still be absent. */
-    if (!reserve_character(buffer, capacity, length))
+    if (!reserve_character(buffer, capacity, count))
     {
         return READ_NO_MEMORY;
     }
     /* Only a carriage return that a newline follows is a line ending. */
-    if (drop_carriage_return && character == NEWLINE && length > 0 &&
-        (*buffer)[length - 1] == CARRIAGE_RETURN)
+    if (drop_carriage_return && character == NEWLINE && count > 0 &&
+        (*buffer)[count - 1] == CARRIAGE_RETURN)
     {
-        length--;
+        count--;
     }
-    (*buffer)[length] = '\0';
+    (*buffer)[count] = '\0';
+    *length = count;
     return READ_LINE;
 }

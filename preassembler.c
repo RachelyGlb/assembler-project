@@ -31,6 +31,9 @@
 #define STRINGIFY_TOKEN(token) #token
 #define STRINGIFY(constant) STRINGIFY_TOKEN(constant)
 
+/* The byte that a source line must not contain (SYN-26). */
+#define NUL_BYTE '\0'
+
 /* The mode in which the .am file is opened. */
 #define WRITE_MODE "w"
 
@@ -447,13 +450,18 @@ static void handle_discarding(Scan *scan, const char *line)
 
 /*
  * Handles one line of the source file according to the state of the scan.
- * The length of the line is checked first (ERR-10), except for the lines
- * that are discarded (MAC-38).
- *   scan  the scan
- *   line  the line, without its terminator
+ * The length of the line is checked first (ERR-10) and then its bytes
+ * (ERR-46), except for the lines that are discarded (MAC-38). The length is
+ * the true one, NUL bytes included, and a line that is too long gets only
+ * the message about its length (SYN-26, ERR-R16). A line with a NUL byte is
+ * then handled quietly like a line that is too long; its fields are those
+ * of the text in front of the first NUL byte.
+ *   scan    the scan
+ *   line    the line, without its terminator
+ *   length  the number of bytes of the line, NUL bytes included
  * Returns FALSE when memory is exhausted.
  */
-static Boolean handle_line(Scan *scan, const char *line)
+static Boolean handle_line(Scan *scan, const char *line, size_t length)
 {
     Boolean quiet = FALSE;
 
@@ -462,11 +470,17 @@ static Boolean handle_line(Scan *scan, const char *line)
         handle_discarding(scan, line);
         return TRUE;
     }
-    if (strlen(line) > MAX_SOURCE_LINE_LENGTH)
+    if (length > MAX_SOURCE_LINE_LENGTH)
     {
         errors_report(scan->errors, scan->line_number,
                       "the line is longer than %d characters",
                       MAX_SOURCE_LINE_LENGTH);
+        quiet = TRUE;
+    }
+    else if (memchr(line, NUL_BYTE, length) != NULL)
+    {
+        errors_report(scan->errors, scan->line_number,
+                      "the line contains a NUL byte");
         quiet = TRUE;
     }
     if (scan->state == STATE_RECORDING)
@@ -487,16 +501,19 @@ static Boolean scan_source(Scan *scan, FILE *source)
 {
     char *line = NULL;
     size_t capacity = 0;
+    size_t length;
     Boolean enough_memory = TRUE;
-    ReadStatus status = util_read_line(source, &line, &capacity, TRUE);
+    ReadStatus status = util_read_line(source, &line, &capacity, &length,
+                                       TRUE);
 
     while (status == READ_LINE && enough_memory)
     {
-        enough_memory = handle_line(scan, line);
+        enough_memory = handle_line(scan, line, length);
         scan->line_number++;
         if (enough_memory)
         {
-            status = util_read_line(source, &line, &capacity, TRUE);
+            status = util_read_line(source, &line, &capacity, &length,
+                                    TRUE);
         }
     }
     free(line);
