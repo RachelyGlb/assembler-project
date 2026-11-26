@@ -87,7 +87,8 @@ Open questions that no source settles (SPEC section 6.1), with recommended
 readings:
 
 - Q-3 File name in error messages. Recommended: `file.as:line: error: text`.
-- Q-4 Separator in `.ob`/`.ent`/`.ext`. Recommended: one space, no indent.
+- Q-4 Separator in `.ob`/`.ent`/`.ext`. Recommended: one TAB, no indent
+  (changed after the second look: both reference programs use a TAB).
 - Q-6 Numeric bounds. Recommended: signed only (-128..127 immediate,
   -512..511 data).
 - Q-7 `.mat` dimensions. Recommended: unsigned positive integers only.
@@ -108,6 +109,61 @@ readings:
   instruction table; `CLAUDE.md` allows const tables. Recommended: keep the
   const table `static` inside the instruction-table module, reachable only
   through access functions, which satisfies both.
+
+## Second look at the open points (2026-11-26)
+
+The owner doubted that the 19 points were really open. An independent auditor
+re-read the whole forum text and the booklet, and a second auditor built and
+ran the two reference repositories (behaviour only, no code taken). SPEC.md
+section 6.1 has not yet been edited to reflect this; a spec-analyst should do
+that together with the owner's decisions at the start of Phase 1.
+
+Note on `docs/forum.txt`: its two copies are not equal. Lines 1 to 2545 stop at
+the thread "Matrix Labels"; 28 threads, including most rulings from 03/06 to
+25/06, exist only in lines 4639 to 5304. Always search the whole file.
+
+Result of the source audit (forum.txt line numbers in parentheses):
+
+- C-1 to C-5: confirmed as explicit moderator "at your discretion" answers
+  (2295, 4839, 5191, 774, 5174, 1810, 1855).
+- Settled by a ruling: Q-16 an argument is a name without the extension, so
+  `x.as` makes the program try `x.as.as` and report an error (2258); Q-25 no
+  global arrays, even a const instruction table (1765, 2452); Q-21 a duplicate
+  macro name may be reported as an invalid macro name, and reporting satisfies
+  all four moderator posts (5204, 4942, 4643-4655, 378); Q-11 a macro name
+  must be checked against label names (405).
+- Implied by the sources: Q-6 signed ranges only, -128..127 and -512..511
+  (p.19, p.21, 1024); Q-8 repeated `.extern`/`.entry` accepted (p.35 step 10,
+  p.36 step 5, 1933-1939); Q-9 directive names without the dot are reserved
+  (p.29); Q-10 a macro call inside a macro body is not expanded (p.31, 4701);
+  Q-11 a macro name starts with a letter and may not be a register name
+  (5285, p.29); Q-14 a label alone on a line is an error (p.25, p.28, p.35);
+  Q-22 a label before `mcro`/`mcroend`/a call is illegal input; Q-4 widths and
+  a zero header printed as `a` (p.45, 5153).
+- Still open after the audit: Q-3 file name in error messages; Q-4 the
+  separator character only; Q-7 `.mat` dimension 0, negative or signed, and
+  whitespace before the first value; Q-9 `PSW` and `PC` only; Q-16 the exit
+  status only; Q-17 `.string ""`.
+
+What the two reference programs do on the points that are still open or left
+to the implementer (Y = System-Programming-Assembler, N =
+Assembler-C-Final-Project; observed by running them):
+
+- C-1: both report the `.am` line in the passes and the `.as` line in the
+  pre-assembler. C-2: both check line length in the pre-assembler. C-3: both
+  remove empty and comment lines from `.am`. C-4: Y ignores the extra text, N
+  leaves the line for the first pass. C-5: Y reports an error, N does not
+  detect it.
+- Q-3: neither prints the file name in the message. Q-4: both separate fields
+  with one TAB; Y indents the header with a TAB, N pads the header to four
+  letters and adds an empty line. Q-7: both reject dimension 0 and accept
+  `[2][2]1,2,3,4`; Y accepts `+2`. Q-9: Y accepts every name, N rejects the
+  bare directive names and accepts `PSW` and `PC`. Q-16: Y exits 1 only for a
+  file that does not open, N always exits 0. Q-17: both accept `""` and emit
+  one zero word.
+- Both programs have defects of their own (N crashes on `stop` at end of
+  line; Y strips all whitespace in `.am`), so they are a data point about
+  what was accepted, not a reference for correct behaviour.
 
 ## Known issues in the existing code (seen in passing, not yet audited)
 
