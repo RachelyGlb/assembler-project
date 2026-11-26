@@ -291,6 +291,7 @@ static Boolean open_definition(Scan *scan, const char *name,
         }
         return TRUE;
     }
+    /* The name is new: definition_fault has looked it up in the table. */
     scan->current = macro_table_add(scan->macros, name);
     if (scan->current == NULL)
     {

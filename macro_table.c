@@ -91,13 +91,8 @@ void macro_table_destroy(MacroTable *table)
 /* Adds a macro with an empty body; see macro_table.h. */
 Macro *macro_table_add(MacroTable *table, const char *name)
 {
-    Macro *macro;
+    Macro *macro = (Macro *)malloc(sizeof(Macro));
 
-    if (macro_table_find(table, name) != NULL)
-    {
-        return NULL;
-    }
-    macro = (Macro *)malloc(sizeof(Macro));
     if (macro == NULL)
     {
         return NULL;

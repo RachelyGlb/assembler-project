@@ -19,13 +19,6 @@
 /* The layout of every output line: two fields, one TAB, one newline. */
 #define LINE_FORMAT "%s\t%s\n"
 
-/* What the walk over the symbol table needs to write the entries. */
-typedef struct
-{
-    FILE *file; /* The .ent file, or NULL while the entries are counted. */
-    int count;  /* The number of entry symbols seen. */
-} EntryWalk;
-
 /*
  * Creates one output file.
  *   base_name  the name of the source file without the extension
@@ -168,25 +161,34 @@ static StageResult write_object(const char *base_name,
 }
 
 /*
- * Visits one symbol for the entries file: counts it when it is an entry
- * and, when the file is open, writes its line. The symbol table holds every
- * symbol once, so an entry symbol is written once (DIR-34, OUT-8).
+ * Counts one symbol when it is an entry; a SymbolVisitor.
  *   symbol    the symbol visited
- *   argument  the EntryWalk of the walk
+ *   argument  the count of entry symbols so far, an int
  */
-static void visit_entry(const Symbol *symbol, void *argument)
+static void count_entry(const Symbol *symbol, void *argument)
 {
-    EntryWalk *walk = (EntryWalk *)argument;
+    int *count = (int *)argument;
 
-    if (!symbol_is_entry(symbol))
+    if (symbol_is_entry(symbol))
     {
-        return;
+        (*count)++;
     }
-    walk->count++;
-    if (walk->file != NULL)
+}
+
+/*
+ * Writes the line of one symbol when it is an entry; a SymbolVisitor. The
+ * symbol table holds every symbol once, so an entry symbol is written once
+ * (DIR-34, OUT-8).
+ *   symbol    the symbol visited
+ *   argument  the open entries file, a FILE
+ */
+static void write_entry(const Symbol *symbol, void *argument)
+{
+    FILE *file = (FILE *)argument;
+
+    if (symbol_is_entry(symbol))
     {
-        write_symbol_line(walk->file, symbol_name(symbol),
-                          symbol_address(symbol));
+        write_symbol_line(file, symbol_name(symbol), symbol_address(symbol));
     }
 }
 
@@ -201,24 +203,23 @@ static StageResult write_entries(const char *base_name,
                                  const SymbolTable *symbols,
                                  ErrorContext *errors)
 {
-    EntryWalk walk;
+    int count = 0;
+    FILE *file;
     StageResult result;
 
-    /* The first walk only counts, so that an empty file is never made. */
-    walk.file = NULL;
-    walk.count = 0;
-    symbol_table_for_each(symbols, visit_entry, &walk);
-    if (walk.count == 0)
+    /* The entries are counted first, so that an empty file is never made. */
+    symbol_table_for_each(symbols, count_entry, &count);
+    if (count == 0)
     {
         return STAGE_OK;
     }
-    result = open_output(base_name, ENTRIES_EXTENSION, errors, &walk.file);
+    result = open_output(base_name, ENTRIES_EXTENSION, errors, &file);
     if (result != STAGE_OK)
     {
         return result;
     }
-    symbol_table_for_each(symbols, visit_entry, &walk);
-    return close_output(walk.file, ENTRIES_EXTENSION, errors);
+    symbol_table_for_each(symbols, write_entry, file);
+    return close_output(file, ENTRIES_EXTENSION, errors);
 }
 
 /*

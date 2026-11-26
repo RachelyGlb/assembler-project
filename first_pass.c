@@ -23,12 +23,6 @@
 /* A code word before any of its bits is known. */
 #define EMPTY_WORD 0u
 
-/*
- * The position of the index word among the two additional words of a
- * matrix operand (ADR-7).
- */
-#define MATRIX_INDEX_WORD 1
-
 /* Everything the first pass of one source file needs. */
 typedef struct
 {
@@ -40,22 +34,6 @@ typedef struct
     Boolean overflow_reported; /* TRUE once ERR-41 was reported (ALG-17). */
     Boolean no_memory;         /* TRUE once an allocation failed. */
 } FirstPass;
-
-/*
- * Tells whether a statement stores data, so that its label is a data label
- * (DIR-8, DIR-11, DIR-16).
- *   statement  the statement to ask
- * Returns TRUE for .data, .string and .mat.
- */
-static Boolean is_data_statement(const Statement *statement)
-{
-    StatementKind kind = statement_kind(statement);
-
-    return (kind == STATEMENT_DATA || kind == STATEMENT_STRING ||
-            kind == STATEMENT_MAT)
-               ? TRUE
-               : FALSE;
-}
 
 /*
  * Adds a symbol to the symbol table and notes an allocation failure.
@@ -132,7 +110,7 @@ static Boolean define_label(FirstPass *pass, const Statement *statement,
     {
         return FALSE;
     }
-    if (is_data_statement(statement))
+    if (statement_stores_data(statement))
     {
         return add_symbol(pass, label,
                           memory_image_data_counter(pass->image),
@@ -195,25 +173,25 @@ static Boolean store_data(FirstPass *pass, const Statement *statement)
 /*
  * Builds the first word of an instruction from its operation and the
  * addressing modes of its operands (ENC-3). A mode field without an operand
- * is zero (ENC-9, ENC-10).
+ * is MODE_FIELD_UNUSED (ENC-9, ENC-10).
  *   statement  a valid instruction statement
  * Returns the word.
  */
 static unsigned int first_word(const Statement *statement)
 {
-    AddressingMode source = ADDRESSING_IMMEDIATE;
-    AddressingMode destination = ADDRESSING_IMMEDIATE;
+    int source = MODE_FIELD_UNUSED;
+    int destination = MODE_FIELD_UNUSED;
     int index;
 
     for (index = 0; index < statement_operand_count(statement); index++)
     {
         if (statement_operand_is_source(statement, index))
         {
-            source = statement_operand_mode(statement, index);
+            source = (int)statement_operand_mode(statement, index);
         }
         else
         {
-            destination = statement_operand_mode(statement, index);
+            destination = (int)statement_operand_mode(statement, index);
         }
     }
     return encode_first_word(
@@ -233,7 +211,7 @@ static unsigned int first_word(const Statement *statement)
 static void store_operand(FirstPass *pass, const Statement *statement,
                           int index, int base)
 {
-    int address = base + statement_operand_word_offset(statement, index);
+    int offset = statement_operand_word_offset(statement, index);
     int value = statement_operand_value(statement, index);
     AddressingMode mode = statement_operand_mode(statement, index);
     unsigned int word = EMPTY_WORD;
@@ -251,13 +229,14 @@ static void store_operand(FirstPass *pass, const Statement *statement,
     }
     else if (mode == ADDRESSING_MATRIX)
     {
-        address += MATRIX_INDEX_WORD;
+        /* The label word stays zero; the indices fill the word after. */
+        offset = statement_operand_index_word_offset(statement, index);
         word = encode_matrix_indices(
             statement_operand_matrix_register(statement, index, MATRIX_ROW),
             statement_operand_matrix_register(statement, index,
                                               MATRIX_COLUMN));
     }
-    memory_image_merge_code(pass->image, address, word);
+    memory_image_merge_code(pass->image, base + offset, word);
 }
 
 /*
@@ -334,25 +313,27 @@ static Boolean declare_external(FirstPass *pass, const Statement *statement)
  */
 static Boolean handle_statement(FirstPass *pass, const Statement *statement)
 {
-    switch (statement_kind(statement))
+    StatementKind kind = statement_kind(statement);
+
+    if (kind == STATEMENT_INSTRUCTION)
     {
-    case STATEMENT_INSTRUCTION:
         return (define_label(pass, statement, TRUE) &&
                 store_instruction(pass, statement))
                    ? TRUE
                    : FALSE;
-    case STATEMENT_DATA:
-    case STATEMENT_STRING:
-    case STATEMENT_MAT:
+    }
+    if (statement_stores_data(statement))
+    {
         return (define_label(pass, statement, TRUE) &&
                 store_data(pass, statement))
                    ? TRUE
                    : FALSE;
-    case STATEMENT_EXTERN:
-        return declare_external(pass, statement);
-    default:
-        return TRUE;
     }
+    if (kind == STATEMENT_EXTERN)
+    {
+        return declare_external(pass, statement);
+    }
+    return TRUE;
 }
 
 /*

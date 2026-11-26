@@ -21,19 +21,26 @@ typedef enum
 } AreKind;
 
 /*
+ * The content of a mode field of the first word of an instruction that has
+ * no operand for the field (ENC-9, ENC-10).
+ */
+#define MODE_FIELD_UNUSED 0
+
+/*
  * Builds the first word of an instruction (ENC-3, ENC-4): the opcode in
  * bits 9-6, the source mode in bits 5-4, the destination mode in bits 3-2
  * and the A,R,E field 00.
- *   opcode       the opcode, 0 to 15
- *   source       the addressing mode of the source operand; the caller
- *                passes ADDRESSING_IMMEDIATE, which is zero, when there is
- *                no source operand (ENC-9, ENC-10)
- *   destination  the addressing mode of the destination operand, or
- *                ADDRESSING_IMMEDIATE when there is none (ENC-10)
+ *   opcode            the opcode, 0 to 15
+ *   source_mode       the number of the addressing mode of the source
+ *                     operand, an AddressingMode, or MODE_FIELD_UNUSED when
+ *                     the instruction has no source operand
+ *   destination_mode  the number of the addressing mode of the destination
+ *                     operand, or MODE_FIELD_UNUSED when the instruction
+ *                     has no operand
  * Returns the word.
  */
-unsigned int encode_first_word(int opcode, AddressingMode source,
-                               AddressingMode destination);
+unsigned int encode_first_word(int opcode, int source_mode,
+                               int destination_mode);
 
 /*
  * Builds the additional word of an immediate operand (ADR-3): the value in

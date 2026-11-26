@@ -71,7 +71,8 @@ void statement_destroy(Statement *statement);
  * Tells whether the line was free of syntax errors.
  *   statement  the statement to ask
  * Returns FALSE when statement_parse reported an error for the line. Only
- * statement_kind and statement_label are meaningful for such a statement.
+ * statement_kind, statement_stores_data and statement_label are meaningful
+ * for such a statement.
  */
 Boolean statement_is_valid(const Statement *statement);
 
@@ -82,6 +83,15 @@ Boolean statement_is_valid(const Statement *statement);
  *   statement  the statement to ask
  */
 StatementKind statement_kind(const Statement *statement);
+
+/*
+ * Tells whether a statement stores words in the data image, so that its
+ * label is a data label (DIR-8, DIR-11, DIR-16). The answer depends on the
+ * kind alone, so it is meaningful for a statement that is not valid too.
+ *   statement  the statement to ask
+ * Returns TRUE for a .data, .string or .mat directive.
+ */
+Boolean statement_stores_data(const Statement *statement);
 
 /*
  * Returns the label defined at the start of the line.
@@ -165,10 +175,21 @@ int statement_operand_matrix_register(const Statement *statement, int index,
  *   index      the position of the operand as written, from 0
  * Returns the offset of the first additional word of the operand from the
  * first word of the instruction. Two register operands get the same offset,
- * because they share one word. The second word of a matrix operand lies at
- * the next offset.
+ * because they share one word. The second word of a matrix operand is
+ * answered by statement_operand_index_word_offset.
  */
 int statement_operand_word_offset(const Statement *statement, int index);
+
+/*
+ * Returns where the index word of a matrix operand lies inside the
+ * instruction: the second of its two additional words, which holds the two
+ * index registers (ADR-7).
+ *   statement  a valid instruction statement
+ *   index      the position of a matrix operand as written, from 0
+ * Returns the offset of the index word from the first word of the
+ * instruction.
+ */
+int statement_operand_index_word_offset(const Statement *statement, int index);
 
 /*
  * Returns the number of machine words that a statement takes. This is the

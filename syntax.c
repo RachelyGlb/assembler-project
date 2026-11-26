@@ -65,6 +65,12 @@
 #define SIMPLE_OPERAND_WORDS 1
 #define MATRIX_OPERAND_WORDS 2
 
+/*
+ * The position of the index word among the two additional words of a
+ * matrix operand (ADR-7).
+ */
+#define MATRIX_INDEX_WORD 1
+
 /* The first size of the array of data values. */
 #define VALUES_INITIAL_CAPACITY 8
 
@@ -112,6 +118,23 @@ typedef struct
     int line_number;      /* The .as line number, for the message. */
     Boolean no_memory;    /* TRUE once an allocation failed. */
 } Parser;
+
+/*
+ * The type of a function that parses the operands of a directive.
+ *   parser  the parser of the line
+ *   text    the text after the directive name
+ */
+typedef void (*DirectiveParser)(Parser *parser, const char *text);
+
+/* Everything the parser knows about one directive. */
+typedef struct
+{
+    DirectiveKind directive; /* The directive. */
+    StatementKind kind;      /* The kind of statement it makes. */
+    DirectiveParser parse;   /* The function that parses its operands. */
+    Boolean stores_data;     /* TRUE when it adds words to the data image. */
+    Boolean ignores_label;   /* TRUE when a label in front is ignored. */
+} DirectiveRule;
 
 /*
  * Reports the syntax error of the line and marks the statement as not
@@ -616,41 +639,57 @@ static void report_unknown_directive(Parser *parser, const char *start,
 }
 
 /*
+ * The directives of the parser, one row each (DIR-4): what a .data, .string
+ * or .mat directive stores gives its label a data address (DIR-8, DIR-11,
+ * DIR-16), and a label in front of .entry or .extern is ignored (DIR-35).
+ */
+static const DirectiveRule directive_rules[] = {
+    {DIRECTIVE_DATA, STATEMENT_DATA, parse_data, TRUE, FALSE},
+    {DIRECTIVE_STRING, STATEMENT_STRING, parse_string, TRUE, FALSE},
+    {DIRECTIVE_MAT, STATEMENT_MAT, parse_mat, TRUE, FALSE},
+    {DIRECTIVE_ENTRY, STATEMENT_ENTRY, parse_symbol_operand, FALSE, TRUE},
+    {DIRECTIVE_EXTERN, STATEMENT_EXTERN, parse_symbol_operand, FALSE, TRUE}};
+
+/*
+ * Finds the row of a directive whose name is a piece of the line.
+ *   start  the first character of the name, the dot
+ *   end    the position just after the name
+ * Returns the row, or NULL when the piece is not the name of a directive.
+ */
+static const DirectiveRule *find_directive_rule(const char *start,
+                                                const char *end)
+{
+    DirectiveKind directive =
+        directive_find_text(start, (size_t)(end - start));
+    size_t index;
+
+    for (index = 0; index < ARRAY_LENGTH(directive_rules); index++)
+    {
+        if (directive_rules[index].directive == directive)
+        {
+            return &directive_rules[index];
+        }
+    }
+    return NULL;
+}
+
+/*
  * Parses a directive statement (DIR-1).
  *   parser  the parser of the line
  *   start   the first character of the directive name, the dot
  */
 static void parse_directive(Parser *parser, const char *start)
 {
-    Statement *statement = parser->statement;
     const char *end = util_skip_field(start);
+    const DirectiveRule *rule = find_directive_rule(start, end);
 
-    switch (directive_find_text(start, (size_t)(end - start)))
+    if (rule == NULL)
     {
-    case DIRECTIVE_DATA:
-        statement->kind = STATEMENT_DATA;
-        parse_data(parser, end);
-        break;
-    case DIRECTIVE_STRING:
-        statement->kind = STATEMENT_STRING;
-        parse_string(parser, end);
-        break;
-    case DIRECTIVE_MAT:
-        statement->kind = STATEMENT_MAT;
-        parse_mat(parser, end);
-        break;
-    case DIRECTIVE_ENTRY:
-        statement->kind = STATEMENT_ENTRY;
-        parse_symbol_operand(parser, end);
-        break;
-    case DIRECTIVE_EXTERN:
-        statement->kind = STATEMENT_EXTERN;
-        parse_symbol_operand(parser, end);
-        break;
-    default:
         report_unknown_directive(parser, start, end);
-        break;
+        return;
     }
+    parser->statement->kind = rule->kind;
+    rule->parse(parser, end);
 }
 
 /*
@@ -1034,15 +1073,14 @@ static const char *skip_ignored_label(Parser *parser, const char *first)
 {
     const char *end = util_skip_field(first);
     const char *second = util_skip_spaces(end);
-    DirectiveKind kind;
+    const DirectiveRule *rule;
 
     if (end == first || end[-1] != LABEL_END_CHARACTER)
     {
         return first;
     }
-    kind = directive_find_text(second,
-                               (size_t)(util_skip_field(second) - second));
-    if (kind != DIRECTIVE_ENTRY && kind != DIRECTIVE_EXTERN)
+    rule = find_directive_rule(second, util_skip_field(second));
+    if (rule == NULL || !rule->ignores_label)
     {
         return first;
     }
@@ -1249,6 +1287,21 @@ StatementKind statement_kind(const Statement *statement)
     return statement->kind;
 }
 
+/* Tells whether a statement stores data words; see syntax.h. */
+Boolean statement_stores_data(const Statement *statement)
+{
+    size_t index;
+
+    for (index = 0; index < ARRAY_LENGTH(directive_rules); index++)
+    {
+        if (directive_rules[index].kind == statement->kind)
+        {
+            return directive_rules[index].stores_data;
+        }
+    }
+    return FALSE;
+}
+
 /* Returns the label defined by the line; see syntax.h. */
 const char *statement_label(const Statement *statement)
 {
@@ -1343,6 +1396,13 @@ int statement_operand_word_offset(const Statement *statement, int index)
         return FIRST_WORD_COUNT;
     }
     return FIRST_WORD_COUNT + operand_words(first);
+}
+
+/* Returns where the index word of a matrix operand lies; see syntax.h. */
+int statement_operand_index_word_offset(const Statement *statement, int index)
+{
+    return statement_operand_word_offset(statement, index) +
+           MATRIX_INDEX_WORD;
 }
 
 /*

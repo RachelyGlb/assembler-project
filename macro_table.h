@@ -34,12 +34,12 @@ MacroTable *macro_table_create(void);
 void macro_table_destroy(MacroTable *table);
 
 /*
- * Adds a macro with an empty body.
+ * Adds a macro with an empty body. The table does not look for the name:
+ * the caller asks macro_table_find first and adds only a name that is not
+ * in the table, as with the symbol table.
  *   table  the table to add to
- *   name   the name of the macro; it is copied
- * Returns the new macro, or NULL when the name is already in the table or
- * memory is exhausted. A caller that has just looked the name up with
- * macro_table_find can therefore read NULL as "out of memory".
+ *   name   the name of the macro, which is not in the table; it is copied
+ * Returns the new macro, or NULL when memory is exhausted.
  */
 Macro *macro_table_add(MacroTable *table, const char *name);
 

@@ -43,12 +43,12 @@ static unsigned int field(int value, int bits, int shift)
 }
 
 /* Builds the first word of an instruction; see encoder.h. */
-unsigned int encode_first_word(int opcode, AddressingMode source,
-                               AddressingMode destination)
+unsigned int encode_first_word(int opcode, int source_mode,
+                               int destination_mode)
 {
     return field(opcode, OPCODE_BITS, OPCODE_SHIFT) |
-           field((int)source, MODE_BITS, SOURCE_MODE_SHIFT) |
-           field((int)destination, MODE_BITS, DESTINATION_MODE_SHIFT) |
+           field(source_mode, MODE_BITS, SOURCE_MODE_SHIFT) |
+           field(destination_mode, MODE_BITS, DESTINATION_MODE_SHIFT) |
            field((int)ARE_ABSOLUTE, ARE_BITS, 0);
 }
 
