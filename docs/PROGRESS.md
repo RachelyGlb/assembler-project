@@ -5,13 +5,57 @@ then continue with the next phase."
 
 ## Current state
 
-- **Phase 0 (Understand): finished 2026-11-26.**
-- **Phase 1 (Tests before fixes): finished 2026-11-26.**
-- **Phase 2 (Diagnose): finished 2026-11-26. STOPPED, waiting for the owner
-  to approve the plan below.** No assembler code has been changed. No project
-  code may be written before that approval.
-- Next: Phase 3 (correctness), following the approved plan.
+- **Phase 0 (Understand), Phase 1 (Tests), Phase 2 (Diagnose): finished
+  2026-11-26.** The owner approved the Phase 2 plan, the answers to the open
+  questions and the publication items on 2026-11-26.
+- **Phase 3 (Correctness): finished 2026-11-26.** `make` has zero warnings,
+  `make test` prints `passed 175, failed 0, total 175`, and valgrind reports
+  no errors and no leaks on valid, failing and mixed runs (checked by the
+  orchestrator on `ps nosuch example1 undefined_symbol one_message_per_line`).
+- **Phase 4 (Clean-up): in progress.** Two independent reviews of the rebuilt
+  code are the starting point: correctness beyond the suite, and code quality
+  against the coding rules. Each finding gets its own fixer or refactorer.
+  Phase 4 ends with a module table and a STOP for the owner's approval.
 - Working branch: `claude/project-thread-l0vj7x`.
+
+## Phase 3: what was done
+
+The approved plan had stage A (fixes in place: errors, symbol table, output
+writer) followed by stage B (three rewrites). Because the approved target
+structure (`docs/audit/STRUCTURE.md`) changes the public interface of every
+module, the work was regrouped by pipeline stage so that nothing was fixed
+twice; the content is the same. The orchestrator asked the owner with a
+decision card and went ahead with the recommended option without waiting for
+a tap; this departure is to be confirmed with the owner at the Phase 4 stop.
+
+1. `1001b08` BUG-01: header renamed to `assembler.h`, Makefile reduced to
+   `all`, `test`, `clean` with generated header dependencies.
+2. `7a31dff` Dead code, `tests/sh`, CR LF endings and Hebrew comments removed;
+   behaviour proven unchanged by a byte comparison of all test outputs.
+3. `adea770` Stage 1: `common.h`, `errors`, `util`, `instruction_table`,
+   `macro_table`, `line_map`, `preassembler` and a new driver `assembler.c`.
+4. `a58f002` Stage 2: `syntax`, `symbol_table`, `memory_image`, `encoder`,
+   `base4`, `reference_list`, `first_pass`, `second_pass`, `output_writer`;
+   all legacy files deleted.
+
+The test suite was extended to 175 cases (`696cdd7`) after the owner's
+answers to Q-26 to Q-33 were recorded in SPEC (`cceacd4`).
+
+Conventions of the new code that every later change must keep: a stage
+returns a `StageResult` (`STAGE_OK`, `STAGE_ERRORS`, `STAGE_FATAL`); an
+allocation failure is returned up to the driver as `STAGE_FATAL` and never
+handled by calling `exit` inside a module; every diagnostic goes through
+`errors_report` or `errors_warn` with the line translated by
+`line_map_source_line`; a line is parsed once, by `statement_parse`, and a
+syntax error yields a statement for which `statement_is_valid` is false.
+
+Readings the code makes where SPEC section 6.1 is still open (to be confirmed
+by the owner): Q-34 a label before `.entry` whose operand is undefined gives
+the warning in the first pass and the error in the second pass; Q-35 an
+over-long `mcro`, `mcroend` or call line gives one line-length error and
+still opens or closes the definition; Q-36 a plain `mcroend` with no open
+definition is copied and rejected by the first pass; Q-37 a line with another
+error adds no words, so it never also reports memory overflow.
 
 ## Phase 1 result
 
@@ -65,7 +109,7 @@ auditors independently recommend rewriting that cluster and the body of
 `preassembler()` instead of fixing them bug by bug. `CLAUDE.md` forbids
 rewriting a whole module without the owner's approval.
 
-### Proposed plan (waiting for approval)
+### Plan proposed at the end of Phase 2 (approved, then regrouped; see Phase 3)
 
 Stage A, foundations, one fixer each, a commit after each:
 
@@ -98,7 +142,7 @@ Stage C: whatever still fails, one bug per fixer (BUG-14 allocation
 failures, BUG-30 memory bound, and anything the earlier steps unmask), until
 `make test` is green and valgrind is clean. Then Phase 4.
 
-### Questions waiting for the owner
+### Questions put to the owner at the end of Phase 2 (all approved as recommended)
 
 - Approval of the plan, in particular the three rewrites in stage B.
 - SPEC section 6.1, source-silent details, with recommended answers:
