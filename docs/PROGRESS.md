@@ -256,8 +256,8 @@ Result of the source audit (forum.txt line numbers in parentheses):
   status only; Q-17 `.string ""`.
 
 What the two reference programs do on the points that are still open or left
-to the implementer (Y = System-Programming-Assembler, N =
-Assembler-C-Final-Project; observed by running them):
+to the implementer (called Y and N here;
+observed by running them):
 
 - C-1: both report the `.am` line in the passes and the `.as` line in the
   pre-assembler. C-2: both check line length in the pre-assembler. C-3: both

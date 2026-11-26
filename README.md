@@ -169,7 +169,6 @@ The assembler performs comprehensive error checking:
 ## 📞 Contact
 
 **RachelyGlb**  
-📧 Rachely.dev@gmail.com
 
 **Note:** This is an academic project in development. Feedback and suggestions are welcome!
 
