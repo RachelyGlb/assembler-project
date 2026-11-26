@@ -2,11 +2,27 @@
 #ifndef TYPES_H
 #define TYPES_H
 
-#include "assembler.h"
+/*
+ * Legacy header: it serves only the old passes, the old memory builder and
+ * the old output writer, and disappears with them. The rebuilt modules use
+ * common.h. The standard headers below are included here because the legacy
+ * sources rely on getting them through this header.
+ */
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <ctype.h>
 
+#include "common.h"
 
-/* additional constants */
-#define MEMORY_SIZE 256
+/*
+ * Legacy buffer sizes (not the limits of the language, which are
+ * MAX_SOURCE_LINE_LENGTH and MAX_NAME_LENGTH in common.h).
+ */
+#define MAX_LINE_LENGTH 82
+#define MAX_LABEL_LENGTH 31
+
+/* additional constants (MEMORY_SIZE now comes from common.h) */
 #define BASE_ADDRESS 100
 
 /* ARE bits */
@@ -54,14 +70,6 @@ typedef struct Symbol
     int is_entry;
     struct Symbol *next;
 } Symbol;
-
-/* instruction definition */
-typedef struct
-{
-    char name[10];
-    int opcode;
-    int operands_count;
-} InstructionDef;
 
 /* external reference */
 typedef struct ExtRef

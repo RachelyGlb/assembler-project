@@ -122,7 +122,7 @@ void process_instruction_second_pass(const char *line, SecondPassContext *ctx, i
     char operand1[MAX_LINE_LENGTH] = "";
     char operand2[MAX_LINE_LENGTH] = "";
     int operand_count = 0;
-    InstructionDef *instr;
+    const Instruction *instr;
     MachineWord word;
     int are_bits;
     int addr1, addr2;
@@ -147,7 +147,7 @@ void process_instruction_second_pass(const char *line, SecondPassContext *ctx, i
     }
 
     /* Find instruction in table */
-    instr = find_instruction(instruction_name);
+    instr = instruction_find(instruction_name);
     if (!instr)
     {
         printf("Error line %d: Unknown instruction '%s'\n", line_number, instruction_name);

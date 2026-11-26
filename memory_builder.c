@@ -346,7 +346,7 @@ void encode_instruction_first_pass(const char *line, MemoryImage *memory, int *c
     char operand2[MAX_LINE_LENGTH] = "";
     
     int operand_count = 0;
-    InstructionDef *instr;
+    const Instruction *instr;
     int opcode;
     int src_method = 0, dest_method = 0;
     MachineWord first_word, w;
@@ -367,7 +367,7 @@ void encode_instruction_first_pass(const char *line, MemoryImage *memory, int *c
     if (!instruction_name)
         return;
     /* locate instruction */
-    instr = find_instruction(instruction_name);
+    instr = instruction_find(instruction_name);
     if (!instr)
         return;
 

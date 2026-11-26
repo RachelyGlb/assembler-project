@@ -20,20 +20,20 @@ DEPFLAGS = -MMD -MP
 TARGET = assembler
 
 SOURCES = assembler.c \
-          error_handling.c \
-          file_utils.c \
+          errors.c \
           first_pass.c \
           instruction_table.c \
           instruction_validation.c \
+          legacy_bridge.c \
           line_analysis.c \
-          line_parser.c \
-          macro_and_label_func.c \
+          line_map.c \
+          macro_table.c \
           memory_builder.c \
           output_writer.c \
           preassembler.c \
           second_pass.c \
           symbol_table.c \
-          word_extractor.c
+          util.c
 
 OBJECTS = $(SOURCES:.c=.o)
 DEPENDS = $(SOURCES:.c=.d)

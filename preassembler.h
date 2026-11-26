@@ -1,130 +1,42 @@
+/*
+ * preassembler.h - the pre-assembler: macro expansion.
+ *
+ * The pre-assembler reads the source file, checks the length of every line
+ * (SYN-2b), collects the macro definitions, replaces every macro call by
+ * the body of the macro and writes the result to the .am file (MAC-29). It
+ * reports every pre-assembler error of SPEC section 5.2 (ERR-2 to ERR-10)
+ * with its .as line number, one message per line (ERR-R16), and does not
+ * stop at the first (MAC-22). It does not look into macro bodies and does
+ * not check labels (MAC-24); the passes do that.
+ */
 #ifndef PREASSEMBLER_H
 #define PREASSEMBLER_H
 
-#include "assembler.h"
-#include <string.h>
-#include <stdlib.h>
 #include <stdio.h>
-#include <ctype.h>
 
-/* Constants */
+#include "common.h"
+#include "errors.h"
+#include "line_map.h"
+#include "macro_table.h"
 
-/* Macro keywords */
-#define MACRO_START "mcro"
-#define MACRO_END "mcroend"
-
-/* Generic structures for universal table handling */
-typedef struct GenericNode
-{
-    char *name;
-    int line_number;
-    void *data;
-    struct GenericNode *next;
-} GenericNode;
-
-typedef struct
-{
-    GenericNode *head;
-    int count;
-} GenericTable;
-
-/* Macro-specific data structure */
-typedef struct
-{
-    char **content;
-    int line_count;
-} MacroData;
-
-/* Type aliases for clarity */
-typedef GenericNode MacroNode;
-
-/* FUNCTION PROTOTYPES */
-
-/* Generic table functions */
-GenericTable *create_generic_table(void);
-void free_generic_table(GenericTable *table, void (*cleanup_data)(void *));
-Boolean add_to_generic_table(GenericTable *table, const char *name, int line_number, void *data);
-GenericNode *find_in_generic_table(GenericTable *table, const char *name);
-
-/* Specific table implementations */
-GenericTable *create_macro_table(void);
-void free_macro_table(GenericTable *table);
-Boolean add_macro(GenericTable *table, const char *name, char **content, int line_count);
-GenericNode *find_macro(GenericTable *table, const char *name);
-
-GenericTable *create_label_table(void);
-void free_label_table(GenericTable *table);
-Boolean add_label_to_table(GenericTable *table, const char *name, int line_number);
-Boolean is_label_already_defined(GenericTable *table, const char *name);
-
-/* String utilities */
-char *extract_until_char(const char *line, char delimiter);
-char *get_content_after_char(const char *line, char delimiter);
-Boolean is_valid_name(const char *name, Boolean allow_underscore);
-
-/* Label processing functions */
-Boolean has_label(const char *line);
-char *extract_label_name(const char *line);
-char *get_content_after_label(const char *line);
-Boolean is_valid_label_name(const char *name);
-Boolean is_valid_macro_name(const char *name);
-
-/* Basic string processing functions */
-char *get_first_word(const char *line);
-char *get_second_word(const char *line);
-Boolean has_extraneous_text_after_words(const char *line, int expected_words);
-
-/* File utilities */
-Boolean file_exists(const char *filename);
-void cleanup_macro_lines(char **lines, int count);
-char *create_filename_with_extension(const char *base_name, const char *extension);
-
-/* Line processing functions */
-Boolean is_empty_line(const char *line);
-Boolean is_comment_line(const char *line);
-Boolean is_line_too_long(const char *line, int line_number, FILE *input);
-char *trim_whitespace(char *str);
-Boolean is_reserved_word(const char *word);
-
-/* Main preassembler function */
-Boolean preassembler(const char *filename);
-
-/* Error handling macros */
-#define REPORT_CRITICAL_ERROR_AND_EXIT(error_type, line_num, msg, ptr1, ptr2) \
-    print_error(error_type, line_num, msg);                                   \
-    if (ptr1)                                                                 \
-    {                                                                         \
-        free(ptr1);                                                           \
-    }                                                                         \
-    if (ptr2)                                                                 \
-    {                                                                         \
-        free(ptr2);                                                           \
-    }                                                                         \
-    exit(1)
-
-#define REPORT_ERROR_AND_CONTINUE(error_type, line_num, msg, ptr1, ptr2) \
-    print_error(error_type, line_num, msg);                              \
-    has_errors = TRUE;                                                   \
-    if (ptr1)                                                            \
-    {                                                                    \
-        free(ptr1);                                                      \
-    }                                                                    \
-    if (ptr2)                                                            \
-    {                                                                    \
-        free(ptr2);                                                      \
-    }                                                                    \
-    continue
-
-#define REPORT_ERROR_ONLY(error_type, line_num, msg, ptr1, ptr2) \
-    print_error(error_type, line_num, msg);                      \
-    has_errors = TRUE;                                           \
-    if (ptr1)                                                    \
-    {                                                            \
-        free(ptr1);                                              \
-    }                                                            \
-    if (ptr2)                                                    \
-    {                                                            \
-        free(ptr2);                                              \
-    }
+/*
+ * Runs the pre-assembler on one source file.
+ *   source        the .as file, open for reading at its beginning; the
+ *                 caller closes it
+ *   am_file_name  the name of the .am file to write
+ *   macros        an empty macro table; on return it holds the macros that
+ *                 were defined correctly, for the first pass (LBL-21)
+ *   lines         an empty line map; on return it holds, for every line of
+ *                 the .am file, its .as line number (MAC-35)
+ *   errors        the diagnostics context of the file
+ * Returns STAGE_OK when the .am file was written and no error was found;
+ * STAGE_ERRORS when at least one error was reported, in which case no .am
+ * file is left (MAC-23); STAGE_FATAL when memory ran out, in which case no
+ * .am file is left either and nothing was reported about it (the caller
+ * does that, ERR-R10).
+ */
+StageResult preassemble(FILE *source, const char *am_file_name,
+                        MacroTable *macros, LineMap *lines,
+                        ErrorContext *errors);
 
 #endif /* PREASSEMBLER_H */

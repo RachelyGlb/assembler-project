@@ -81,53 +81,53 @@ static OperandType classify_operand(const char *op)
 }
 
 /* validate operand count */
-static int validate_operands_count(const InstructionDef *instr,
+static int validate_operands_count(const Instruction *instr,
                                    const char *op1, const char *op2,
                                    int line_number)
 {
-    if (instr->operands_count == 0)
+    if (instruction_operand_count(instr) == 0)
         return 1;
 
-    if (instr->operands_count == 1)
+    if (instruction_operand_count(instr) == 1)
     {
         if (!op1 || !*op1)
         {
             printf("Error on line %d: Missing operand for instruction '%s'.\n",
-                   line_number, instr->name);
+                   line_number, instruction_name(instr));
             return 0;
         }
         return 1;
     }
 
-    if (instr->operands_count == 2)
+    if (instruction_operand_count(instr) == 2)
     {
         if (!op1 || !*op1 || !op2 || !*op2)
         {
             printf("Error on line %d: Missing operands for instruction '%s'.\n",
-                   line_number, instr->name);
+                   line_number, instruction_name(instr));
             return 0;
         }
         return 1;
     }
 
     printf("Error on line %d: Internal: unsupported operands_count=%d for '%s'.\n",
-           line_number, instr->operands_count, instr->name);
+           line_number, instruction_operand_count(instr), instruction_name(instr));
     return 0;
 }
 
 /* check whether operand types are allowed for the instruction */
-static int is_type_allowed_for_instruction(const InstructionDef *ins,
+static int is_type_allowed_for_instruction(const Instruction *ins,
                                            OperandType srcType,
                                            OperandType dstType,
                                            int line_number)
 {
-    const char *name = ins->name;
+    const char *name = instruction_name(ins);
 
-    if (ins->operands_count == 0)
+    if (instruction_operand_count(ins) == 0)
         return 1;
-    if (ins->operands_count >= 1 && dstType == OT_INVALID)
+    if (instruction_operand_count(ins) >= 1 && dstType == OT_INVALID)
         return 0;
-    if (ins->operands_count == 2 && srcType == OT_INVALID)
+    if (instruction_operand_count(ins) == 2 && srcType == OT_INVALID)
         return 0;
 
     if (!strcmp(name, "cmp"))
@@ -177,14 +177,14 @@ static int is_type_allowed_for_instruction(const InstructionDef *ins,
 }
 
 /* validate operand types */
-static int validate_operands_types(const InstructionDef *instr,
+static int validate_operands_types(const Instruction *instr,
                                    const char *op1, const char *op2,
                                    int line_number)
 {
-    if (instr->operands_count == 0)
+    if (instruction_operand_count(instr) == 0)
         return 1;
 
-    if (instr->operands_count == 1)
+    if (instruction_operand_count(instr) == 1)
     {
         OperandType t = classify_operand(op1);
         if (t == OT_INVALID)
@@ -194,22 +194,22 @@ static int validate_operands_types(const InstructionDef *instr,
         }
         if (!is_type_allowed_for_instruction(instr, OT_INVALID, t, line_number))
         {
-            if (!strcmp(instr->name, "prn"))
+            if (!strcmp(instruction_name(instr), "prn"))
             {
                 printf("Error on line %d: Operand type not allowed for '%s'.\n",
-                       line_number, instr->name);
+                       line_number, instruction_name(instr));
             }
             else
             {
                 printf("Error on line %d: Operand for '%s' must be direct/matrix/register (not immediate).\n",
-                       line_number, instr->name);
+                       line_number, instruction_name(instr));
             }
             return 0;
         }
         return 1;
     }
 
-    if (instr->operands_count == 2)
+    if (instruction_operand_count(instr) == 2)
     {
         OperandType t1 = classify_operand(op1);
         OperandType t2 = classify_operand(op2);
@@ -228,7 +228,7 @@ static int validate_operands_types(const InstructionDef *instr,
 
         if (!is_type_allowed_for_instruction(instr, t1, t2, line_number))
         {
-            if (!strcmp(instr->name, "lea"))
+            if (!strcmp(instruction_name(instr), "lea"))
             {
                 if (!(t1 == OT_DIRECT || t1 == OT_MATRIX))
                 {
@@ -239,23 +239,23 @@ static int validate_operands_types(const InstructionDef *instr,
                     printf("Error on line %d: Destination for 'lea' must be direct/register.\n", line_number);
                 }
             }
-            else if (!strcmp(instr->name, "mov") || !strcmp(instr->name, "add") || !strcmp(instr->name, "sub"))
+            else if (!strcmp(instruction_name(instr), "mov") || !strcmp(instruction_name(instr), "add") || !strcmp(instruction_name(instr), "sub"))
             {
                 if (t2 == OT_IMMEDIATE)
                 {
                     printf("Error on line %d: Destination cannot be immediate for '%s'.\n",
-                           line_number, instr->name);
+                           line_number, instruction_name(instr));
                 }
                 else
                 {
                     printf("Error on line %d: Operand types not allowed for '%s'.\n",
-                           line_number, instr->name);
+                           line_number, instruction_name(instr));
                 }
             }
             else
             {
                 printf("Error on line %d: Operand types not allowed for '%s'.\n",
-                       line_number, instr->name);
+                       line_number, instruction_name(instr));
             }
             return 0;
         }
@@ -269,7 +269,7 @@ static int validate_operands_types(const InstructionDef *instr,
 /* validate an instruction line */
 int validate_command_line(const char *line, int line_number)
 {
-    InstructionDef *instr;
+    const Instruction *instr;
     int count;
     char command[32] = "";
     char rest[256] = "";
@@ -288,7 +288,7 @@ int validate_command_line(const char *line, int line_number)
         return 0;
     }
 
-    instr = find_instruction(command);
+    instr = instruction_find(command);
     if (!instr)
     {
         printf("Error on line %d: Unknown instruction '%s'\n", line_number, command);
@@ -297,10 +297,10 @@ int validate_command_line(const char *line, int line_number)
 
     count = parse_operands(rest, op1, op2);
 
-    if (count != instr->operands_count)
+    if (count != instruction_operand_count(instr))
     {
         printf("Error on line %d: Instruction '%s' expects %d operands, got %d.\n",
-               line_number, instr->name, instr->operands_count, count);
+               line_number, instruction_name(instr), instruction_operand_count(instr), count);
         return 0;
     }
 
