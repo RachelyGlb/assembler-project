@@ -19,7 +19,8 @@ DEPFLAGS = -MMD -MP
 
 TARGET = assembler
 
-SOURCES = assembler.c \
+SOURCES = am_reader.c \
+          assembler.c \
           base4.c \
           encoder.c \
           errors.c \

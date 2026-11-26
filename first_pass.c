@@ -1,19 +1,18 @@
 /*
  * first_pass.c - the first pass over the expanded source file.
  *
- * Every line is parsed into a statement by the syntax module and then
- * handled by the function of its kind. A line that has any error adds no
- * word to the memory image; its label, when it is legal and new, is still
- * defined (LBL-23). See first_pass.h for the contract.
+ * The am_reader module walks over the file and parses every line into a
+ * statement, which is handled here by the function of its kind. A line
+ * that has any error adds no word to the memory image; its label, when it
+ * is legal and new, is still defined (LBL-23). See first_pass.h for the
+ * contract.
  */
 #include "first_pass.h"
 
-#include <stdlib.h>
-
+#include "am_reader.h"
 #include "encoder.h"
 #include "instruction_table.h"
 #include "syntax.h"
-#include "util.h"
 
 /* The value of an external symbol in the symbol table (DIR-21). */
 #define EXTERNAL_SYMBOL_VALUE 0
@@ -357,20 +356,18 @@ static Boolean handle_statement(FirstPass *pass, const Statement *statement)
 }
 
 /*
- * Handles one line of the .am file.
- *   pass  the state of the pass
- *   line  the text of the line
+ * Handles one line of the .am file; the StatementHandler of the first pass.
+ *   statement    the parsed line, valid or not
+ *   line_number  the number of the line in the .as file
+ *   argument     the state of the pass, a FirstPass
+ * Returns FALSE when memory is exhausted.
  */
-static void handle_line(FirstPass *pass, const char *line)
+static Boolean handle_line(const Statement *statement, int line_number,
+                           void *argument)
 {
-    Statement *statement =
-        statement_parse(line, pass->line_number, pass->errors);
+    FirstPass *pass = argument;
 
-    if (statement == NULL)
-    {
-        pass->no_memory = TRUE;
-        return;
-    }
+    pass->line_number = line_number;
     if (!statement_is_valid(statement))
     {
         /* The line has its message; its label is still defined (LBL-23). */
@@ -383,18 +380,7 @@ static void handle_line(FirstPass *pass, const char *line)
         errors_warn(pass->errors, pass->line_number,
                     "the label in front of .entry or .extern is ignored");
     }
-    statement_destroy(statement);
-}
-
-/*
- * Reports that the .am file could not be read back (CLI-12, ERR-47). The
- * message has no line number, like the one for a file that does not open.
- *   errors  the diagnostics context of the file
- */
-static void report_unreadable(ErrorContext *errors)
-{
-    errors_report(errors, NO_LINE, "cannot read the %s file",
-                  EXPANDED_EXTENSION);
+    return pass->no_memory ? FALSE : TRUE;
 }
 
 /*
@@ -424,35 +410,15 @@ StageResult first_pass(FILE *am_file, const LineMap *lines,
                        MemoryImage *image, ErrorContext *errors)
 {
     FirstPass pass;
-    char *line = NULL;
-    size_t capacity = 0;
-    int am_line = FIRST_LINE_NUMBER;
-    int errors_before = errors_count(errors);
-    ReadStatus status;
+    StageResult result;
 
     init_pass(&pass, macros, symbols, image, errors);
-    status = util_read_line(am_file, &line, &capacity, NULL, FALSE);
-    while (status == READ_LINE && !pass.no_memory)
+    result = am_reader_for_each(am_file, lines, errors, handle_line, &pass);
+    if (result == STAGE_OK)
     {
-        pass.line_number = line_map_source_line(lines, am_line++);
-        handle_line(&pass, line);
-        status = util_read_line(am_file, &line, &capacity, NULL, FALSE);
+        /* The data image follows the code image (ALG-6). */
+        symbol_table_relocate_data(symbols,
+                                   memory_image_instruction_counter(image));
     }
-    free(line);
-    if (status == READ_NO_MEMORY || pass.no_memory)
-    {
-        return STAGE_FATAL;
-    }
-    if (status == READ_ERROR)
-    {
-        report_unreadable(errors);
-    }
-    if (errors_count(errors) > errors_before)
-    {
-        return STAGE_ERRORS;
-    }
-    /* The data image follows the code image (ALG-6). */
-    symbol_table_relocate_data(symbols,
-                               memory_image_instruction_counter(image));
-    return STAGE_OK;
+    return result;
 }

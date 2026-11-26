@@ -4,7 +4,8 @@
  * Every line of the three files has the same shape, two fields and one TAB
  * (OUT-13), and is written by the one function write_pair. A file is opened
  * and closed by open_output and close_output, so the handling of a file
- * that cannot be written is in one place too. See output_writer.h for the
+ * that cannot be written is in one place too. The list of the three files
+ * exists once, in remove_output_files. See output_writer.h for the
  * contract.
  */
 #include "output_writer.h"
@@ -254,27 +255,28 @@ static StageResult write_externals(const char *base_name,
     return close_output(file, EXTERNALS_EXTENSION, errors);
 }
 
-/*
- * Removes the output files of a source file after a failure, so that no
- * incomplete output is left. A file that does not exist is not an error.
- *   base_name  the name of the source file without the extension
- */
-static void discard_outputs(const char *base_name)
+/* Removes the output files of a source file; see output_writer.h. */
+Boolean remove_output_files(const char *base_name)
 {
     static const char *const extensions[] = {
         OBJECT_EXTENSION, ENTRIES_EXTENSION, EXTERNALS_EXTENSION};
+    Boolean memory_left = TRUE;
     char *file_name;
     size_t index;
 
     for (index = 0; index < ARRAY_LENGTH(extensions); index++)
     {
         file_name = util_make_file_name(base_name, extensions[index]);
-        if (file_name != NULL)
+        if (file_name == NULL)
         {
-            remove(file_name);
-            free(file_name);
+            /* The other files are still removed. */
+            memory_left = FALSE;
+            continue;
         }
+        remove(file_name);
+        free(file_name);
     }
+    return memory_left;
 }
 
 /* Writes the output files of one source file; see output_writer.h. */
@@ -296,7 +298,11 @@ StageResult write_output_files(const char *base_name,
     }
     if (result != STAGE_OK)
     {
-        discard_outputs(base_name);
+        /*
+         * No incomplete output is left. The result is already a failure,
+         * so a file name that could not be built does not change it.
+         */
+        remove_output_files(base_name);
     }
     return result;
 }

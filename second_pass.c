@@ -1,18 +1,17 @@
 /*
  * second_pass.c - the second pass over the expanded source file.
  *
- * The pass parses every line again with the syntax module, which reports
- * nothing now because the first pass found the file free of syntax errors,
- * and follows the instruction counter with the same word counts that the
- * first pass used. See second_pass.h for the contract.
+ * The am_reader module walks over the file and parses every line again;
+ * the syntax module reports nothing now, because the first pass found the
+ * file free of syntax errors. The pass follows the instruction counter with
+ * the same word counts that the first pass used. See second_pass.h for the
+ * contract.
  */
 #include "second_pass.h"
 
-#include <stdlib.h>
-
+#include "am_reader.h"
 #include "encoder.h"
 #include "syntax.h"
-#include "util.h"
 
 /* The address bits of a word that refers to an external symbol (ENC-8). */
 #define EXTERNAL_ADDRESS 0
@@ -125,20 +124,19 @@ static void resolve_instruction(SecondPass *pass, const Statement *statement)
 }
 
 /*
- * Handles one line of the .am file.
- *   pass  the state of the pass
- *   line  the text of the line
+ * Handles one line of the .am file; the StatementHandler of the second
+ * pass.
+ *   statement    the parsed line
+ *   line_number  the number of the line in the .as file
+ *   argument     the state of the pass, a SecondPass
+ * Returns FALSE when memory is exhausted.
  */
-static void handle_line(SecondPass *pass, const char *line)
+static Boolean handle_line(const Statement *statement, int line_number,
+                           void *argument)
 {
-    Statement *statement =
-        statement_parse(line, pass->line_number, pass->errors);
+    SecondPass *pass = argument;
 
-    if (statement == NULL)
-    {
-        pass->no_memory = TRUE;
-        return;
-    }
+    pass->line_number = line_number;
     if (statement_is_valid(statement))
     {
         if (statement_kind(statement) == STATEMENT_ENTRY)
@@ -151,18 +149,7 @@ static void handle_line(SecondPass *pass, const char *line)
             pass->address += statement_word_count(statement);
         }
     }
-    statement_destroy(statement);
-}
-
-/*
- * Reports that the .am file could not be read back (CLI-12, ERR-47). The
- * message has no line number, like the one for a file that does not open.
- *   errors  the diagnostics context of the file
- */
-static void report_unreadable(ErrorContext *errors)
-{
-    errors_report(errors, NO_LINE, "cannot read the %s file",
-                  EXPANDED_EXTENSION);
+    return pass->no_memory ? FALSE : TRUE;
 }
 
 /* Runs the second pass on one expanded source file; see second_pass.h. */
@@ -171,33 +158,13 @@ StageResult second_pass(FILE *am_file, const LineMap *lines,
                         ReferenceList *externals, ErrorContext *errors)
 {
     SecondPass pass;
-    char *line = NULL;
-    size_t capacity = 0;
-    int am_line = FIRST_LINE_NUMBER;
-    int errors_before = errors_count(errors);
-    ReadStatus status;
 
     pass.symbols = symbols;
     pass.image = image;
     pass.externals = externals;
     pass.errors = errors;
+    pass.line_number = NO_LINE;
     pass.address = FIRST_LOAD_ADDRESS;
     pass.no_memory = FALSE;
-    status = util_read_line(am_file, &line, &capacity, NULL, FALSE);
-    while (status == READ_LINE && !pass.no_memory)
-    {
-        pass.line_number = line_map_source_line(lines, am_line++);
-        handle_line(&pass, line);
-        status = util_read_line(am_file, &line, &capacity, NULL, FALSE);
-    }
-    free(line);
-    if (status == READ_NO_MEMORY || pass.no_memory)
-    {
-        return STAGE_FATAL;
-    }
-    if (status == READ_ERROR)
-    {
-        report_unreadable(errors);
-    }
-    return (errors_count(errors) > errors_before) ? STAGE_ERRORS : STAGE_OK;
+    return am_reader_for_each(am_file, lines, errors, handle_line, &pass);
 }

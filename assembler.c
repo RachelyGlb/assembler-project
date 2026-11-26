@@ -60,30 +60,24 @@ typedef struct
 
 /*
  * Removes the output files that an earlier run may have left for a source
- * file, so that afterwards only the files of this run exist (OUT-14). A
- * file that does not exist is not an error. The source file is not touched.
+ * file, so that afterwards only the files of this run exist (OUT-14): the
+ * .am file, which the pre-assembler makes, and the files of the output
+ * writer. A file that does not exist is not an error. The source file is
+ * not touched.
  *   base_name  the name of the source file without the extension
  * Returns FALSE when memory is exhausted.
  */
 static Boolean remove_stale_outputs(const char *base_name)
 {
-    static const char *const extensions[] = {
-        EXPANDED_EXTENSION, OBJECT_EXTENSION, ENTRIES_EXTENSION,
-        EXTERNALS_EXTENSION};
-    char *file_name;
-    size_t index;
+    char *am_name = util_make_file_name(base_name, EXPANDED_EXTENSION);
 
-    for (index = 0; index < ARRAY_LENGTH(extensions); index++)
+    if (am_name == NULL)
     {
-        file_name = util_make_file_name(base_name, extensions[index]);
-        if (file_name == NULL)
-        {
-            return FALSE;
-        }
-        remove(file_name);
-        free(file_name);
+        return FALSE;
     }
-    return TRUE;
+    remove(am_name);
+    free(am_name);
+    return remove_output_files(base_name);
 }
 
 /*

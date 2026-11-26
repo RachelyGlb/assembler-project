@@ -88,12 +88,6 @@ static Boolean word_matches(const char *word, const char *text, size_t length)
                : FALSE;
 }
 
-/* Looks up an operation by its name; see instruction_table.h. */
-const Instruction *instruction_find(const char *name)
-{
-    return instruction_find_text(name, strlen(name));
-}
-
 /* Looks up an operation by a piece of text; see instruction_table.h. */
 const Instruction *instruction_find_text(const char *text, size_t length)
 {
@@ -157,12 +151,6 @@ int register_number_text(const char *text, size_t length)
     return NOT_A_REGISTER;
 }
 
-/* Looks up a directive by its name with the dot; see instruction_table.h. */
-DirectiveKind directive_find(const char *name)
-{
-    return directive_find_text(name, strlen(name));
-}
-
 /* Looks up a directive by a piece of text; see instruction_table.h. */
 DirectiveKind directive_find_text(const char *text, size_t length)
 {
@@ -201,7 +189,7 @@ static Boolean is_directive_word(const char *word)
 /* The one test for a reserved word (LBL-20); see instruction_table.h. */
 Boolean is_reserved_word(const char *word)
 {
-    if (instruction_find(word) != NULL ||
+    if (instruction_find_text(word, strlen(word)) != NULL ||
         register_number(word) != NOT_A_REGISTER || is_directive_word(word))
     {
         return TRUE;

@@ -33,4 +33,16 @@ StageResult write_output_files(const char *base_name,
                                const ReferenceList *externals,
                                ErrorContext *errors);
 
+/*
+ * Removes the output files of a source file: the object file, the entries
+ * file and the externals file. This is the one list of the files that the
+ * writer makes; the driver uses it for the files left by an earlier run
+ * (OUT-14) and the writer for its own files after a failure. A file that
+ * does not exist is not an error.
+ *   base_name  the name of the source file without the extension
+ * Returns FALSE when memory is exhausted; every file whose name could
+ * still be built was removed all the same.
+ */
+Boolean remove_output_files(const char *base_name);
+
 #endif /* OUTPUT_WRITER_H */
