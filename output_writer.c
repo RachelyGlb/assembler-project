@@ -1,356 +1,307 @@
+/*
+ * output_writer.c - the writer of the output files.
+ *
+ * Every line of the three files has the same shape, two fields and one TAB
+ * (OUT-13), and is written by the one function write_pair. A file is opened
+ * and closed by open_output and close_output, so the handling of a file
+ * that cannot be written is in one place too. See output_writer.h for the
+ * contract.
+ */
+#include <stdio.h>
+#include <stdlib.h>
+
+#include "base4.h"
 #include "output_writer.h"
-#include "memory_builder.h"
-#include "line_analysis.h"
-#include "instruction_table.h"
+#include "util.h"
 
-/* Generate all output files */
-Boolean generate_output_files(const char *filename, MemoryImage *memory,
-                              ExtRef *ext_list, EntryPoint *entry_list)
+/* The mode in which an output file is opened. */
+#define WRITE_MODE "w"
+
+/* The layout of every output line: two fields, one TAB, one newline. */
+#define LINE_FORMAT "%s\t%s\n"
+
+/* The number of files that the writer can produce (OUT-1). */
+#define WRITTEN_FILE_COUNT 3
+
+/* What the walk over the symbol table needs to write the entries. */
+typedef struct
 {
-    Boolean success = TRUE;
+    FILE *file; /* The .ent file, or NULL while the entries are counted. */
+    int count;  /* The number of entry symbols seen. */
+} EntryWalk;
 
-    /* Always generate .ob file */
-    if (!write_object_file(filename, memory))
+/*
+ * Creates one output file.
+ *   base_name  the name of the source file without the extension
+ *   extension  the extension of the output file
+ *   errors     the diagnostics context of the file
+ *   file       receives the open file, or NULL
+ * Returns STAGE_OK; STAGE_ERRORS, after a report, when the file cannot be
+ * created; STAGE_FATAL when memory is exhausted.
+ */
+static StageResult open_output(const char *base_name, const char *extension,
+                               ErrorContext *errors, FILE **file)
+{
+    char *file_name = util_make_file_name(base_name, extension);
+
+    *file = NULL;
+    if (file_name == NULL)
     {
-        printf("Error: Failed to write object file\n");
-        success = FALSE;
+        return STAGE_FATAL;
     }
-
-    /* Generate .ent file only if there are entry points */
-    if (count_entries(entry_list) > 0)
+    *file = fopen(file_name, WRITE_MODE);
+    free(file_name);
+    if (*file == NULL)
     {
-        if (!write_entries_file(filename, entry_list))
-        {
-            printf("Error: Failed to write entries file\n");
-            success = FALSE;
-        }
+        errors_report(errors, NO_LINE, "cannot create the %s output file",
+                      extension);
+        return STAGE_ERRORS;
     }
-
-    /* Generate .ext file only if there are external references */
-    if (count_externals(ext_list) > 0)
-    {
-        if (!write_externals_file(filename, ext_list))
-        {
-            printf("Error: Failed to write externals file\n");
-            success = FALSE;
-        }
-    }
-
-    return success;
+    return STAGE_OK;
 }
 
-/* Write .ob (object) file */
-Boolean write_object_file(const char *filename, MemoryImage *memory)
+/*
+ * Closes an output file and checks that everything was written (ERR-R11).
+ *   file       the file to close
+ *   extension  the extension of the file, for the message
+ *   errors     the diagnostics context of the file
+ * Returns STAGE_OK, or STAGE_ERRORS after a report when a write failed.
+ */
+static StageResult close_output(FILE *file, const char *extension,
+                                ErrorContext *errors)
 {
+    Boolean failed = ferror(file) ? TRUE : FALSE;
+
+    if (fclose(file) != 0)
+    {
+        failed = TRUE;
+    }
+    if (failed)
+    {
+        errors_report(errors, NO_LINE, "cannot write the %s output file",
+                      extension);
+        return STAGE_ERRORS;
+    }
+    return STAGE_OK;
+}
+
+/*
+ * Writes one line of an output file: two fields separated by one TAB
+ * (OUT-13).
+ *   file   the file to write to
+ *   left   the first field
+ *   right  the second field
+ */
+static void write_pair(FILE *file, const char *left, const char *right)
+{
+    fprintf(file, LINE_FORMAT, left, right);
+}
+
+/*
+ * Writes one line that holds a name and an address of four base-4 digits,
+ * the line of the .ent and .ext files (OUT-8, OUT-9).
+ *   file     the file to write to
+ *   name     the name of the symbol
+ *   address  the address
+ */
+static void write_symbol_line(FILE *file, const char *name, int address)
+{
+    char digits[BASE4_BUFFER_SIZE];
+
+    base4_format((unsigned int)address, BASE4_ADDRESS_DIGITS, digits);
+    write_pair(file, name, digits);
+}
+
+/*
+ * Writes one line of the memory image: the address in four base-4 digits
+ * and the word in five (OUT-4, OUT-5).
+ *   file     the file to write to
+ *   address  the address of the word
+ *   word     the machine word
+ */
+static void write_word_line(FILE *file, int address, unsigned int word)
+{
+    char address_digits[BASE4_BUFFER_SIZE];
+    char word_digits[BASE4_BUFFER_SIZE];
+
+    base4_format((unsigned int)address, BASE4_ADDRESS_DIGITS, address_digits);
+    base4_format(word, BASE4_WORD_DIGITS, word_digits);
+    write_pair(file, address_digits, word_digits);
+}
+
+/*
+ * Writes the object file: the two lengths without leading digits, then the
+ * code image and right after it the data image, in ascending address order
+ * from the load address (OUT-3, OUT-4, OUT-7, OUT-13, ALG-14).
+ *   base_name  the name of the source file without the extension
+ *   image      the memory image
+ *   errors     the diagnostics context of the file
+ * Returns the result of the stage, as write_output_files does.
+ */
+static StageResult write_object(const char *base_name,
+                                const MemoryImage *image,
+                                ErrorContext *errors)
+{
+    int code_count = memory_image_code_count(image);
+    int data_count = memory_image_data_counter(image);
+    char code_length[BASE4_BUFFER_SIZE];
+    char data_length[BASE4_BUFFER_SIZE];
     FILE *file;
-    char *base_name;
-    char *obj_filename;
-    char *ic_base4, *dc_base4, *ic_trimmed, *dc_trimmed;
-    char *address_base4, *word_base4;
-    int i;
-    int calculated_address;
-    /* Create output filename */
-    base_name = get_base_filename(filename);
-    if (!base_name)
-        return FALSE;
+    int index;
+    StageResult result =
+        open_output(base_name, OBJECT_EXTENSION, errors, &file);
 
-    obj_filename = malloc(strlen(base_name) + 4 + 1); /* ".ob" + '\0' */
-    if (!obj_filename)
+    if (result != STAGE_OK)
     {
-        free(base_name);
-        return FALSE;
+        return result;
     }
-    sprintf(obj_filename, "%s.ob", base_name);
-
-    /* Open file for writing */
-    file = fopen(obj_filename, "w");
-    if (!file)
+    base4_format_shortest((unsigned int)code_count, code_length);
+    base4_format_shortest((unsigned int)data_count, data_length);
+    write_pair(file, code_length, data_length);
+    for (index = 0; index < code_count; index++)
     {
-        printf("Error: Cannot create object file %s\n", obj_filename);
-        free(base_name);
-        free(obj_filename);
-        return FALSE;
+        write_word_line(file, FIRST_LOAD_ADDRESS + index,
+                        memory_image_code_word(image, index));
     }
-
-    /* Header: IC and DC in base-4 (trim leading 'a's) */
-
-    ic_base4 = decimal_to_base4(memory->instruction_count, 5);
-    dc_base4 = decimal_to_base4(memory->data_count, 5);
-
-    
-
-
-    if (!ic_base4 || !dc_base4)
+    for (index = 0; index < data_count; index++)
     {
-        printf("Error: Failed to convert header to base 4\n");
-        fclose(file);
-        free(base_name);
-        free(obj_filename);
-        if (ic_base4)
-            free(ic_base4);
-        if (dc_base4)
-            free(dc_base4);
-        return FALSE;
+        write_word_line(file, FIRST_LOAD_ADDRESS + code_count + index,
+                        memory_image_data_word(image, index));
     }
-
-    ic_trimmed = ic_base4;
-    dc_trimmed = dc_base4;
-    while (*ic_trimmed == 'a' && strlen(ic_trimmed) > 1)
-        ic_trimmed++;
-    while (*dc_trimmed == 'a' && strlen(dc_trimmed) > 1)
-        dc_trimmed++;
-
-    fprintf(file, "%s %s\n", ic_trimmed, dc_trimmed);
-    /* Write instruction image: addr(4), word(5) */
-    for (i = 0; i < memory->instruction_count; i++)
-    {
-        printf("Instruction[%d] at addr %d: decimal=%d, binary=", 
-           i, BASE_ADDRESS + i, memory->instruction_image[i].bits);
-        address_base4 = decimal_to_base4(BASE_ADDRESS + i, 4);
-        
-        word_base4 = decimal_to_base4(memory->instruction_image[i].bits & 0x3FF, 5);
-         
-        if (!address_base4 || !word_base4)
-        {
-            printf("Error: Failed to convert instruction to base 4\n");
-            fclose(file);
-            free(base_name);
-            free(obj_filename);
-            free(ic_base4);
-            free(dc_base4);
-            if (address_base4)
-                free(address_base4);
-            if (word_base4)
-                free(word_base4);
-            return FALSE;
-        }
-        fprintf(file, "%s %s\n", address_base4, word_base4);
-        free(address_base4);
-        free(word_base4);
-        }
-    
-
-    
-    for (i = 0; i < memory->data_count; i++)
-    {
-        calculated_address = BASE_ADDRESS + memory->instruction_count + i;
-        printf("Data[%d] at addr %d: decimal=%d\n", i, BASE_ADDRESS + memory->instruction_count + i, memory->data_image[i].bits);
-         
-    
-        address_base4 = decimal_to_base4(calculated_address, 4);
-        word_base4 = decimal_to_base4(memory->data_image[i].bits & 0x3FF, 5);
-        if (!address_base4 || !word_base4)
-        {
-            printf("Error: Failed to convert data to base 4\n");
-            fclose(file);
-            free(base_name);
-            free(obj_filename);
-            free(ic_base4);
-            free(dc_base4);
-            if (address_base4)
-                free(address_base4);
-            if (word_base4)
-                free(word_base4);
-            return FALSE;
-        }
-        fprintf(file, "%s %s\n", address_base4, word_base4);
-        free(address_base4);
-        free(word_base4);
-    }
-
-    fclose(file);
-
-    printf("Generated object file: %s\n", obj_filename);
-
-    free(base_name);
-    free(obj_filename);
-    free(ic_base4);
-    free(dc_base4);
-
-    return TRUE;
+    return close_output(file, OBJECT_EXTENSION, errors);
 }
 
-/* Write .ent (entries) file */
-Boolean write_entries_file(const char *filename, EntryPoint *entry_list)
+/*
+ * Visits one symbol for the entries file: counts it when it is an entry
+ * and, when the file is open, writes its line. The symbol table holds every
+ * symbol once, so an entry symbol is written once (DIR-34, OUT-8).
+ *   symbol    the symbol visited
+ *   argument  the EntryWalk of the walk
+ */
+static void visit_entry(const Symbol *symbol, void *argument)
 {
+    EntryWalk *walk = (EntryWalk *)argument;
+
+    if (!symbol_is_entry(symbol))
+    {
+        return;
+    }
+    walk->count++;
+    if (walk->file != NULL)
+    {
+        write_symbol_line(walk->file, symbol_name(symbol),
+                          symbol_address(symbol));
+    }
+}
+
+/*
+ * Writes the entries file, unless no symbol is an entry (OUT-2, OUT-8).
+ *   base_name  the name of the source file without the extension
+ *   symbols    the symbol table
+ *   errors     the diagnostics context of the file
+ * Returns the result of the stage, as write_output_files does.
+ */
+static StageResult write_entries(const char *base_name,
+                                 const SymbolTable *symbols,
+                                 ErrorContext *errors)
+{
+    EntryWalk walk;
+    StageResult result;
+
+    /* The first walk only counts, so that an empty file is never made. */
+    walk.file = NULL;
+    walk.count = 0;
+    symbol_table_for_each(symbols, visit_entry, &walk);
+    if (walk.count == 0)
+    {
+        return STAGE_OK;
+    }
+    result = open_output(base_name, ENTRIES_EXTENSION, errors, &walk.file);
+    if (result != STAGE_OK)
+    {
+        return result;
+    }
+    symbol_table_for_each(symbols, visit_entry, &walk);
+    return close_output(walk.file, ENTRIES_EXTENSION, errors);
+}
+
+/*
+ * Writes the externals file, one line per use of an external symbol, unless
+ * no external symbol is used (OUT-2, OUT-9, OUT-13).
+ *   base_name  the name of the source file without the extension
+ *   externals  the uses of external symbols
+ *   errors     the diagnostics context of the file
+ * Returns the result of the stage, as write_output_files does.
+ */
+static StageResult write_externals(const char *base_name,
+                                   const ReferenceList *externals,
+                                   ErrorContext *errors)
+{
+    int count = reference_list_count(externals);
     FILE *file;
-    char *base_name;
-    char *ent_filename;
-    char *address_base4;
-    EntryPoint *current;
+    int index;
+    StageResult result;
 
-    if (!entry_list)
-        return TRUE; /* No entries to write */
-
-    /* Create output filename */
-    base_name = get_base_filename(filename);
-    if (!base_name)
-        return FALSE;
-
-    ent_filename = malloc(strlen(base_name) + 6); /* +5 for ".ent" +1 for null */
-    if (!ent_filename)
+    if (count == 0)
     {
-        free(base_name);
-        return FALSE;
+        return STAGE_OK;
     }
-    sprintf(ent_filename, "%s.ent", base_name);
-
-    /* Open file for writing */
-    file = fopen(ent_filename, "w");
-    if (!file)
+    result = open_output(base_name, EXTERNALS_EXTENSION, errors, &file);
+    if (result != STAGE_OK)
     {
-        printf("Error: Cannot create entries file %s\n", ent_filename);
-        free(base_name);
-        free(ent_filename);
-        return FALSE;
+        return result;
     }
-
-    /* Write each entry point */
-    current = entry_list;
-    while (current)
+    for (index = 0; index < count; index++)
     {
-        address_base4 = decimal_to_base4(current->address, 4);
-        if (!address_base4)
+        write_symbol_line(file, reference_list_name(externals, index),
+                          reference_list_address(externals, index));
+    }
+    return close_output(file, EXTERNALS_EXTENSION, errors);
+}
+
+/*
+ * Removes the output files of a source file after a failure, so that no
+ * incomplete output is left. A file that does not exist is not an error.
+ *   base_name  the name of the source file without the extension
+ */
+static void discard_outputs(const char *base_name)
+{
+    static const char *const extensions[WRITTEN_FILE_COUNT] = {
+        OBJECT_EXTENSION, ENTRIES_EXTENSION, EXTERNALS_EXTENSION};
+    char *file_name;
+    int index;
+
+    for (index = 0; index < WRITTEN_FILE_COUNT; index++)
+    {
+        file_name = util_make_file_name(base_name, extensions[index]);
+        if (file_name != NULL)
         {
-            printf("Error: Failed to convert entry address to base 4\n");
-            fclose(file);
-            free(base_name);
-            free(ent_filename);
-            return FALSE;
+            remove(file_name);
+            free(file_name);
         }
-
-        fprintf(file, "%s %s\n", current->symbol_name, address_base4);
-        free(address_base4);
-        current = current->next;
     }
-
-    fclose(file);
-    free(base_name);
-    free(ent_filename);
-
-    printf("Generated entries file: %s\n", ent_filename);
-    return TRUE;
 }
 
-/* Write .ext (externals) file */
-Boolean write_externals_file(const char *filename, ExtRef *ext_list)
+/* Writes the output files of one source file; see output_writer.h. */
+StageResult write_output_files(const char *base_name,
+                               const MemoryImage *image,
+                               const SymbolTable *symbols,
+                               const ReferenceList *externals,
+                               ErrorContext *errors)
 {
-    FILE *file;
-    char *base_name;
-    char *ext_filename;
-    char *address_base4;
-    ExtRef *current;
+    StageResult result = write_object(base_name, image, errors);
 
-    if (!ext_list)
-        return TRUE; /* No externals to write */
-
-    /* Create output filename */
-    base_name = get_base_filename(filename);
-    if (!base_name)
-        return FALSE;
-
-    ext_filename = malloc(strlen(base_name) + 6); /* +5 for ".ext" +1 for null */
-    if (!ext_filename)
+    if (result == STAGE_OK)
     {
-        free(base_name);
-        return FALSE;
+        result = write_entries(base_name, symbols, errors);
     }
-    sprintf(ext_filename, "%s.ext", base_name);
-
-    /* Open file for writing */
-    file = fopen(ext_filename, "w");
-    if (!file)
+    if (result == STAGE_OK)
     {
-        printf("Error: Cannot create externals file %s\n", ext_filename);
-        free(base_name);
-        free(ext_filename);
-        return FALSE;
+        result = write_externals(base_name, externals, errors);
     }
-
-    /* Write each external reference */
-    current = ext_list;
-    while (current)
+    if (result != STAGE_OK)
     {
-        address_base4 = decimal_to_base4(current->address, 4);
-        if (!address_base4)
-        {
-            printf("Error: Failed to convert external address to base 4\n");
-            fclose(file);
-            free(base_name);
-            free(ext_filename);
-            return FALSE;
-        }
-
-        fprintf(file, "%s %s\n", current->symbol_name, address_base4);
-        free(address_base4);
-        current = current->next;
+        discard_outputs(base_name);
     }
-
-    fclose(file);
-    free(base_name);
-    free(ext_filename);
-
-    printf("Generated externals file: %s\n", ext_filename);
-    return TRUE;
-}
-
-/* Get base filename without extension */
-char *get_base_filename(const char *filename)
-{
-    char *base_name;
-    char *dot_pos;
-    int len;
-
-    if (!filename)
-        return NULL;
-
-    /* Find last dot in filename */
-    dot_pos = strrchr(filename, '.');
-    if (dot_pos)
-    {
-        len = dot_pos - filename;
-    }
-    else
-    {
-        len = strlen(filename);
-    }
-
-    base_name = malloc(len + 1);
-    if (!base_name)
-        return NULL;
-
-    strncpy(base_name, filename, len);
-    base_name[len] = '\0';
-
-    return base_name;
-}
-
-/* Count entries in list */
-int count_entries(EntryPoint *list)
-{
-    int count = 0;
-    EntryPoint *current = list;
-
-    while (current)
-    {
-        count++;
-        current = current->next;
-    }
-
-    return count;
-}
-
-/* Count externals in list */
-int count_externals(ExtRef *list)
-{
-    int count = 0;
-    ExtRef *current = list;
-
-    while (current)
-    {
-        count++;
-        current = current->next;
-    }
-
-    return count;
+    return result;
 }

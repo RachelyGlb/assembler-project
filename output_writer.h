@@ -1,23 +1,36 @@
-/* output_writer.h - output file generation */
+/*
+ * output_writer.h - the writer of the output files.
+ *
+ * After two passes without an error the writer produces, for one source
+ * file, the object file .ob and, only when they have content, the entries
+ * file .ent and the externals file .ext (OUT-1 to OUT-4, OUT-7 to OUT-9).
+ * The exact layout of every line is that of OUT-13.
+ */
 #ifndef OUTPUT_WRITER_H
 #define OUTPUT_WRITER_H
 
-#include "types.h" /* includes all required definitions */
+#include "common.h"
+#include "errors.h"
+#include "memory_image.h"
+#include "reference_list.h"
+#include "symbol_table.h"
 
-/* output file generation functions */
-Boolean generate_output_files(const char *filename, MemoryImage *memory,
-                              ExtRef *ext_list, EntryPoint *entry_list);
-
-Boolean write_object_file(const char *filename, MemoryImage *memory);
-Boolean write_entries_file(const char *filename, EntryPoint *entry_list);
-Boolean write_externals_file(const char *filename, ExtRef *ext_list);
-
-/* helper functions */
-char *get_base_filename(const char *filename);
-int count_entries(EntryPoint *list);
-int count_externals(ExtRef *list);
-
-/* base-4 conversion */
-char *decimal_to_base4(int decimal, int width);
+/*
+ * Writes the output files of one source file.
+ *   base_name  the name of the source file without the extension (OUT-1)
+ *   image      the complete memory image
+ *   symbols    the symbol table, with the entry symbols marked
+ *   externals  the uses of external symbols, in the order of the code
+ *   errors     the diagnostics context of the file
+ * Returns STAGE_OK when every file was written; STAGE_ERRORS when a file
+ * could not be created or written, which is reported, and then none of the
+ * three files is left; STAGE_FATAL when memory ran out (the caller reports
+ * that, ERR-R10).
+ */
+StageResult write_output_files(const char *base_name,
+                               const MemoryImage *image,
+                               const SymbolTable *symbols,
+                               const ReferenceList *externals,
+                               ErrorContext *errors);
 
 #endif /* OUTPUT_WRITER_H */

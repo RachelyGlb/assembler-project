@@ -21,10 +21,15 @@
 
 #include "common.h"
 #include "errors.h"
-#include "legacy_bridge.h"
+#include "first_pass.h"
 #include "line_map.h"
 #include "macro_table.h"
+#include "memory_image.h"
+#include "output_writer.h"
 #include "preassembler.h"
+#include "reference_list.h"
+#include "second_pass.h"
+#include "symbol_table.h"
 #include "util.h"
 
 /* The exit statuses of the program (CLI-9). */
@@ -37,7 +42,7 @@
 /* The line printed when the program is run without arguments (CLI-10). */
 #define USAGE_LINE "usage: assembler file1 [file2 ...]"
 
-/* The mode in which the source file is opened. */
+/* The mode in which the source file and the .am file are opened. */
 #define READ_MODE "r"
 
 /* The number of output files that one source file can produce (OUT-1). */
@@ -50,9 +55,13 @@ typedef struct
     char *source_name;     /* The name of the .as file; owned. */
     char *am_name;         /* The name of the .am file; owned. */
     FILE *source;          /* The open .as file, or NULL. */
+    FILE *expanded;        /* The open .am file, or NULL. */
     ErrorContext *errors;  /* The diagnostics context; owned. */
     MacroTable *macros;    /* The macro table; owned. */
     LineMap *lines;        /* The line map; owned. */
+    SymbolTable *symbols;  /* The symbol table; owned. */
+    MemoryImage *image;    /* The code image and the data image; owned. */
+    ReferenceList *externals; /* The uses of external symbols; owned. */
 } FileJob;
 
 /*
@@ -94,20 +103,26 @@ static Boolean job_prepare(FileJob *job, const char *base_name)
 {
     job->base_name = base_name;
     job->source = NULL;
+    job->expanded = NULL;
     job->source_name = util_make_file_name(base_name, SOURCE_EXTENSION);
     job->am_name = util_make_file_name(base_name, EXPANDED_EXTENSION);
     job->errors = errors_create(base_name);
     job->macros = macro_table_create();
     job->lines = line_map_create();
+    job->symbols = symbol_table_create();
+    job->image = memory_image_create();
+    job->externals = reference_list_create();
     return (job->source_name != NULL && job->am_name != NULL &&
-            job->errors != NULL && job->macros != NULL && job->lines != NULL)
+            job->errors != NULL && job->macros != NULL &&
+            job->lines != NULL && job->symbols != NULL &&
+            job->image != NULL && job->externals != NULL)
                ? TRUE
                : FALSE;
 }
 
 /*
- * Frees everything a job owns and closes its source file (ERR-R11). It is
- * safe after a job_prepare that failed half way.
+ * Frees everything a job owns and closes its files (ERR-R11). It is safe
+ * after a job_prepare that failed half way.
  *   job  the job to release
  */
 static void job_release(FileJob *job)
@@ -116,11 +131,55 @@ static void job_release(FileJob *job)
     {
         fclose(job->source);
     }
+    if (job->expanded != NULL)
+    {
+        fclose(job->expanded);
+    }
+    reference_list_destroy(job->externals);
+    memory_image_destroy(job->image);
+    symbol_table_destroy(job->symbols);
     line_map_destroy(job->lines);
     macro_table_destroy(job->macros);
     errors_destroy(job->errors);
     free(job->am_name);
     free(job->source_name);
+}
+
+/*
+ * Runs the stages that work on the expanded file: the first pass, the
+ * second pass and the output writer. Each stage runs only when the stage
+ * before it found no error (ERR-R6, ERR-R7); both passes read the .am file
+ * from its beginning (ALG-8).
+ *   job  the prepared job, after a pre-assembler that succeeded
+ * Returns STAGE_OK when the output files were written, STAGE_ERRORS when a
+ * stage reported errors, STAGE_FATAL when memory ran out.
+ */
+static StageResult job_assemble(FileJob *job)
+{
+    StageResult result;
+
+    job->expanded = fopen(job->am_name, READ_MODE);
+    if (job->expanded == NULL)
+    {
+        errors_report(job->errors, NO_LINE, "cannot open the %s file",
+                      EXPANDED_EXTENSION);
+        return STAGE_ERRORS;
+    }
+    result = first_pass(job->expanded, job->lines, job->macros, job->symbols,
+                        job->image, job->errors);
+    if (result != STAGE_OK)
+    {
+        return result;
+    }
+    rewind(job->expanded);
+    result = second_pass(job->expanded, job->lines, job->symbols, job->image,
+                         job->externals, job->errors);
+    if (result != STAGE_OK)
+    {
+        return result;
+    }
+    return write_output_files(job->base_name, job->image, job->symbols,
+                              job->externals, job->errors);
 }
 
 /*
@@ -147,14 +206,7 @@ static StageResult job_run(FileJob *job)
     {
         return result;
     }
-    /*
-     * TEMPORARY BRIDGE. The passes and the output writer are legacy code
-     * that the next stages of the rebuild replace. They take only the name
-     * of the .am file; they do not yet use job->errors, job->macros or
-     * job->lines. The new first pass, second pass and output writer are to
-     * be called here instead, each returning a StageResult.
-     */
-    return legacy_run_passes(job->am_name) ? STAGE_OK : STAGE_ERRORS;
+    return job_assemble(job);
 }
 
 /*

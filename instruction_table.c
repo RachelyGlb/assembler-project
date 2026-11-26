@@ -140,6 +140,22 @@ int register_number(const char *name)
     return NOT_A_REGISTER;
 }
 
+/* Looks up a register by a piece of text; see instruction_table.h. */
+int register_number_text(const char *text, size_t length)
+{
+    int number;
+
+    for (number = 0; number < REGISTER_COUNT; number++)
+    {
+        if (strlen(register_names[number]) == length &&
+            strncmp(register_names[number], text, length) == 0)
+        {
+            return number;
+        }
+    }
+    return NOT_A_REGISTER;
+}
+
 /* Looks up a directive by its name with the dot; see instruction_table.h. */
 DirectiveKind directive_find(const char *name)
 {

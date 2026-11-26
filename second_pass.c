@@ -1,462 +1,187 @@
-/**
- * @file second_pass.c
- * @brief Second pass of the assembler - code generation and address resolution
- * 
- * This module implements the second pass of the two-pass assembler.
- * It generates the final machine code, resolves symbol addresses,
- * and creates the necessary output files.
+/*
+ * second_pass.c - the second pass over the expanded source file.
+ *
+ * The pass parses every line again with the syntax module, which reports
+ * nothing now because the first pass found the file free of syntax errors,
+ * and follows the instruction counter with the same word counts that the
+ * first pass used. See second_pass.h for the contract.
  */
+#include <stdlib.h>
 
+#include "encoder.h"
 #include "second_pass.h"
-#include "line_analysis.h"
-#include "instruction_table.h"
-#include "output_writer.h"
-#include "memory_builder.h"
+#include "syntax.h"
+#include "util.h"
 
-/**
- * @brief Main second pass function - generates machine code and resolves addresses
- * @param filename Name of the .am file to process
- * @param memory Pointer to the memory image structure
- * @return TRUE if second pass completed successfully, FALSE on error
- * 
- * The second pass performs the following operations:
- * 1. Reads the preprocessed .am file line by line
- * 2. Processes .entry directives for symbol exports
- * 3. Generates machine code for instructions
- * 4. Resolves symbol addresses and external references
- * 5. Updates the memory image with final code
- * 6. Prepares data for output file generation
+/* The address bits of a word that refers to an external symbol (ENC-8). */
+#define EXTERNAL_ADDRESS 0
+
+/* Everything the second pass of one source file needs. */
+typedef struct
+{
+    SymbolTable *symbols;     /* The symbols of the file. */
+    MemoryImage *image;       /* The memory image being completed. */
+    ReferenceList *externals; /* The uses of external symbols. */
+    ErrorContext *errors;     /* The diagnostics context of the file. */
+    int line_number;          /* The .as line of the line being handled. */
+    int address;              /* The address of the current instruction. */
+    Boolean no_memory;        /* TRUE once an allocation failed. */
+} SecondPass;
+
+/*
+ * Handles .entry: gives the symbol the attribute "entry" (DIR-19). The
+ * symbol must be defined in the file (ERR-51) and must not be external
+ * (DIR-23, ERR-52).
+ *   pass       the state of the pass
+ *   statement  a valid .entry statement
  */
-/* Main second pass function */
-Boolean second_pass(const char *filename, MemoryImage *memory)
+static void mark_entry(SecondPass *pass, const Statement *statement)
 {
-    FILE *file;
-    char line[MAX_LINE_LENGTH];
-    SecondPassContext ctx;
-    int line_number = 0;
+    const char *name = statement_directive_symbol(statement);
+    const Symbol *symbol = symbol_table_find(pass->symbols, name);
 
-    /* Initialize context */
-    ctx.memory = memory;
-    ctx.ext_list = NULL;
-    ctx.entry_list = NULL;
-    ctx.has_errors = FALSE;
-    ctx.current_ic = BASE_ADDRESS;
-
-    /* Open .am file */
-    file = fopen(filename, "r");
-    if (!file)
+    if (symbol == NULL)
     {
-        printf("Error: Cannot open file %s for second pass\n", filename);
+        errors_report(pass->errors, pass->line_number,
+                      ".entry names the symbol '%s', which is not defined "
+                      "in this file",
+                      name);
+        return;
+    }
+    if (symbol_kind(symbol) == SYMBOL_EXTERNAL)
+    {
+        errors_report(pass->errors, pass->line_number,
+                      "the symbol '%s' is declared both .entry and .extern",
+                      name);
+        return;
+    }
+    symbol_table_mark_entry(pass->symbols, name);
+}
+
+/*
+ * Completes the word that holds the address of a symbol (ADR-5): a symbol
+ * of the file gives its address and R, an external symbol gives zero and E
+ * and is recorded as a reference (ENC-8, OUT-9).
+ *   pass     the state of the pass
+ *   name     the name of the symbol
+ *   address  the address of the word to complete
+ * Returns FALSE when the symbol is not in the symbol table (LBL-13,
+ * ERR-50), which is reported, or when memory is exhausted.
+ */
+static Boolean resolve_symbol(SecondPass *pass, const char *name, int address)
+{
+    const Symbol *symbol = symbol_table_find(pass->symbols, name);
+
+    if (symbol == NULL)
+    {
+        errors_report(pass->errors, pass->line_number,
+                      "the symbol '%s' is neither defined nor declared "
+                      ".extern",
+                      name);
         return FALSE;
     }
-
-    printf("Starting second pass for file: %s\n", filename);
-
-    /* Process each line */
-    while (fgets(line, sizeof(line), file))
+    if (symbol_kind(symbol) != SYMBOL_EXTERNAL)
     {
-        line_number++;
-
-        /* Remove newline */
-        line[strcspn(line, "\n")] = '\0';
-
-        /* Skip empty lines and comments */
-        if (is_comment_or_empty(line))
-        {
-            continue;
-        }
-
-        /* Check if line starts with .entry */
-        if (strstr(line, ".entry"))
-        {
-            process_entry_directive(line, &ctx, line_number);
-            continue;
-        }
-
-        /* Skip other directives (.data, .string, .mat, .extern) */
-        if (line[0] == '.' || strstr(line, ".data") || strstr(line, ".string") ||
-            strstr(line, ".mat") || strstr(line, ".extern"))
-        {
-            continue;
-        }
-
-        /* Process instruction lines */
-        /* Process instruction lines */
-if (is_command(line))
-{
-    process_instruction_second_pass(line, &ctx, line_number);
-}
-else
-{
-    printf("SECOND_PASS DEBUG: Skipping non-instruction line: '%s'\n", line);
-}
+        memory_image_merge_code(
+            pass->image, address,
+            encode_address(symbol_address(symbol), ARE_RELOCATABLE));
+        return TRUE;
     }
-
-    fclose(file);
-
-    if (ctx.has_errors)
+    memory_image_merge_code(pass->image, address,
+                            encode_address(EXTERNAL_ADDRESS, ARE_EXTERNAL));
+    if (!reference_list_append(pass->externals, name, address))
     {
-        printf("Errors found in second pass. Output files will not be generated.\n");
-        free_ext_list(ctx.ext_list);
-        free_entry_list(ctx.entry_list);
+        pass->no_memory = TRUE;
         return FALSE;
     }
-
-    /* Generate output files */
-    generate_output_files(filename, memory, ctx.ext_list, ctx.entry_list);
-
-    /* Cleanup */
-    free_ext_list(ctx.ext_list);
-    free_entry_list(ctx.entry_list);
-
-    printf("Second pass completed successfully.\n");
     return TRUE;
 }
 
-/* Process instruction line in second pass */
-void process_instruction_second_pass(const char *line, SecondPassContext *ctx, int line_number)
+/*
+ * Completes the symbol words of one instruction (ALG-10 step 6). The first
+ * symbol that is not found ends the work on the line (ERR-R16).
+ *   pass       the state of the pass; its address is that of the first
+ *              word of the instruction
+ *   statement  a valid instruction statement
+ */
+static void resolve_instruction(SecondPass *pass, const Statement *statement)
 {
-    char line_copy[MAX_LINE_LENGTH];
-    char *token,*end;
-    char *instruction_name;
-    char operand1[MAX_LINE_LENGTH] = "";
-    char operand2[MAX_LINE_LENGTH] = "";
-    int operand_count = 0;
-    const Instruction *instr;
-    MachineWord word;
-    int are_bits;
-    int addr1, addr2;
-    int operand1_words = 0;
-    int instruction_length;
-    
-    strcpy(line_copy, line);
+    const char *name;
+    int index;
 
-    /* Skip label if exists */
-    token = strtok(line_copy, " \t");
-    if (token && strchr(token, ':'))
+    for (index = 0; index < statement_operand_count(statement); index++)
     {
-        token = strtok(NULL, " \t");
-    }
-
-    instruction_name = token;
-    if (!instruction_name)
-    {
-        printf("Error line %d: Missing instruction name\n", line_number);
-        ctx->has_errors = TRUE;
-        return;
-    }
-
-    /* Find instruction in table */
-    instr = instruction_find(instruction_name);
-    if (!instr)
-    {
-        printf("Error line %d: Unknown instruction '%s'\n", line_number, instruction_name);
-        ctx->has_errors = TRUE;
-        return;
-    }
-
-    /* Parse operands FIRST */
-    token = strtok(NULL, ",");
-    if (token)
-    {
-        /* Remove leading/trailing whitespace */
-        while (isspace(*token))
-            token++;
-        strcpy(operand1, token);
-        /* Remove trailing whitespace */
-        end = operand1 + strlen(operand1) - 1;
-        while (end > operand1 && isspace(*end))
-            end--;
-        *(end + 1) = '\0';
-        operand_count++;
-
-        token = strtok(NULL, ",");
-        if (token)
+        /* Only a direct operand and a matrix operand name a symbol. */
+        name = statement_operand_symbol(statement, index);
+        if (name != NULL &&
+            !resolve_symbol(pass, name,
+                            pass->address + statement_operand_word_offset(
+                                                statement, index)))
         {
-            while (isspace(*token))
-                token++;
-            strcpy(operand2, token);
-            end = operand2 + strlen(operand2) - 1;
-            while (end > operand2 && isspace(*end))
-                end--;
-            *(end + 1) = '\0';
-            operand_count++;
+            return;
         }
     }
-
-    
-    /* NOW calculate addresses AFTER parsing - handle matrix properly */
-if (operand_count >= 1)
-{
-    if (operand1[0] == '#')
-        operand1_words = 1;          /* immediate */
-    else if (is_register(operand1))
-        operand1_words = 0;          /* register goes in shared word */
-    else if (is_matrix(operand1))
-        operand1_words = 2;          /* matrix needs 2 words */
-    else
-        operand1_words = 1;          /* direct addressing */
 }
 
-addr1 = ctx->current_ic + 1;
-addr2 = ctx->current_ic + 1 + operand1_words;
-    /* Process operands that reference symbols */
-    /* operand 1 */
-    /* operand 1 */
-if (operand_count >= 1 && operand1[0] != '#' && !is_register(operand1))
+/*
+ * Handles one line of the .am file.
+ *   pass  the state of the pass
+ *   line  the text of the line
+ */
+static void handle_line(SecondPass *pass, const char *line)
 {
-    if (encode_operand(operand1, &word, &are_bits, ctx, line_number, addr1))
-    {
-    
-        update_instruction_word(ctx->memory, addr1, word);
-    }
-    else
-    {
-        ctx->has_errors = TRUE;
-    }
-}
+    Statement *statement =
+        statement_parse(line, pass->line_number, pass->errors);
 
-    /* operand 2 */
-    if (operand_count >= 2 && operand2[0] != '#' && !is_register(operand2))
-{
-    if (encode_operand(operand2, &word, &are_bits, ctx, line_number, addr2))
+    if (statement == NULL)
     {
-        update_instruction_word(ctx->memory, addr2, word);
-    }
-    else
-    {
-        ctx->has_errors = TRUE;
-    }
-}
-/* Update IC by instruction length */
-    instruction_length = get_instruction_length(instruction_name, operand1, operand2);
-    ctx->current_ic += instruction_length;
-
-}
-/* Process .entry directive */
-void process_entry_directive(const char *line, SecondPassContext *ctx, int line_number)
-{
-    char line_copy[MAX_LINE_LENGTH];
-    char *token;
-    Symbol *symbol;
-
-    strcpy(line_copy, line);
-
-    /* Skip ".entry" */
-    token = strtok(line_copy, " \t");
-    token = strtok(NULL, " \t");
-
-    if (!token)
-    {
-        printf("Error line %d: Missing symbol name in .entry directive\n", line_number);
-        ctx->has_errors = TRUE;
+        pass->no_memory = TRUE;
         return;
     }
-
-    /* Find symbol in symbol table */
-    symbol = find_symbol(token);
-    if (!symbol)
+    if (statement_is_valid(statement))
     {
-        printf("Error line %d: Symbol '%s' not defined for .entry\n", line_number, token);
-        ctx->has_errors = TRUE;
-        return;
-    }
-
-    if (symbol->type == EXTERN_SYM)
-    {
-        printf("Error line %d: Cannot declare external symbol '%s' as entry\n", line_number, token);
-        ctx->has_errors = TRUE;
-        return;
-    }
-
-    /* Mark as entry and add to entry list */
-    symbol->is_entry = 1;
-    add_entry_point(ctx, token, symbol->address);
-}
-
-/* Encode operand that references a symbol */
-Boolean encode_operand(const char *operand, MachineWord *word, int *are_bits,
-                       SecondPassContext *ctx, int line_number, int target_address)
-{
-    Symbol *symbol;
-    
-
-    
-    char symbol_name[MAX_LABEL_LENGTH];
-    /* Extract symbol name (handle matrix addressing) */
-    if (strchr(operand, '['))
-    {
-        /* Matrix addressing - extract base name */
-        int i = 0;
-        while (operand[i] && operand[i] != '[' && i < MAX_LABEL_LENGTH - 1)
+        if (statement_kind(statement) == STATEMENT_ENTRY)
         {
-            symbol_name[i] = operand[i];
-            i++;
+            mark_entry(pass, statement);
         }
-        symbol_name[i] = '\0';
+        else if (statement_kind(statement) == STATEMENT_INSTRUCTION)
+        {
+            resolve_instruction(pass, statement);
+            pass->address += statement_word_count(statement);
+        }
     }
-    else
-    {
-        /* Direct addressing */
-        strncpy(symbol_name, operand, MAX_LABEL_LENGTH - 1);
-        symbol_name[MAX_LABEL_LENGTH - 1] = '\0';
-    }
-
-    /* Find symbol in table */
-    symbol = find_symbol(symbol_name);
-    if (!symbol)
-    {
-        printf("Error line %d: Undefined symbol '%s'\n", line_number, symbol_name);
-        ctx->has_errors = TRUE;
-        return FALSE;
-    }
-
-    /* Set ARE bits and address based on symbol type - only once! */
-    if (symbol->type == EXTERN_SYM)
-    {
-        *are_bits = ARE_EXTERNAL;
-        word->bits = ARE_EXTERNAL;  
-        add_external_reference(ctx, symbol_name, target_address);
-    }
-    else
-    {
-        *are_bits = ARE_RELOCATABLE;
-        word->bits = ((symbol->address & 0xFF) << 2) | ARE_RELOCATABLE;
-    }
-    
-    return TRUE;
+    statement_destroy(statement);
 }
 
-/* Get instruction length in words */
-int get_instruction_length(const char *instruction, const char *operand1, const char *operand2)
+/* Runs the second pass on one expanded source file; see second_pass.h. */
+StageResult second_pass(FILE *am_file, const LineMap *lines,
+                        SymbolTable *symbols, MemoryImage *image,
+                        ReferenceList *externals, ErrorContext *errors)
 {
-    int length = 1; /* always the first opcode word */
-    int has_op1 = (operand1 && operand1[0] != '\0');
-    int has_op2 = (operand2 && operand2[0] != '\0');
+    SecondPass pass;
+    char *line = NULL;
+    size_t capacity = 0;
+    int am_line = FIRST_LINE_NUMBER;
+    int errors_before = errors_count(errors);
+    ReadStatus status;
 
-    int op1_is_reg = has_op1 && is_register(operand1);
-    int op2_is_reg = has_op2 && is_register(operand2);
-    int op1_is_matrix = has_op1 && is_matrix(operand1);
-    int op2_is_matrix = has_op2 && is_matrix(operand2);
-
-    /* add words for NON-register operands */
-    if (has_op1 && !op1_is_reg)
+    pass.symbols = symbols;
+    pass.image = image;
+    pass.externals = externals;
+    pass.errors = errors;
+    pass.address = FIRST_LOAD_ADDRESS;
+    pass.no_memory = FALSE;
+    status = util_read_line(am_file, &line, &capacity, FALSE);
+    while (status == READ_LINE && !pass.no_memory)
     {
-        if (operand1[0] == '#')
-            length++;  /* immediate = 1 word */
-        else if (op1_is_matrix)
-            length += 2;  /* matrix = 2 words */
-        else
-            length++;  /* direct = 1 word */
+        pass.line_number = line_map_source_line(lines, am_line++);
+        handle_line(&pass, line);
+        status = util_read_line(am_file, &line, &capacity, FALSE);
     }
-
-    if (has_op2 && !op2_is_reg) 
+    free(line);
+    if (status == READ_NO_MEMORY || pass.no_memory)
     {
-        if (operand2[0] == '#')
-            length++;  /* immediate = 1 word */
-        else if (op2_is_matrix)
-            length += 2;  /* matrix = 2 words */
-        else
-            length++;  /* direct = 1 word */
+        return STAGE_FATAL;
     }
-
-    /* registers: add ONE word if there are ANY register operands */
-    if (op1_is_reg || op2_is_reg)
-    {
-        length += 1;
-    }
-
-    return length;
-}
-/* Add external reference to list */
-void add_external_reference(SecondPassContext *ctx, const char *symbol_name, int address)
-{
-    ExtRef *new_ref = malloc(sizeof(ExtRef));
-    if (!new_ref)
-    {
-        printf("Error: Memory allocation failed for external reference\n");
-        ctx->has_errors = TRUE;
-        return;
-    }
-
-    strncpy(new_ref->symbol_name, symbol_name, MAX_LABEL_LENGTH - 1);
-    new_ref->symbol_name[MAX_LABEL_LENGTH - 1] = '\0';
-    new_ref->address = address;
-    new_ref->next = ctx->ext_list;
-    ctx->ext_list = new_ref;
-}
-
-/* Add entry point to list */
-void add_entry_point(SecondPassContext *ctx, const char *symbol_name, int address)
-{
-    EntryPoint *new_entry = malloc(sizeof(EntryPoint));
-    if (!new_entry)
-    {
-        printf("Error: Memory allocation failed for entry point\n");
-        ctx->has_errors = TRUE;
-        return;
-    }
-
-    strncpy(new_entry->symbol_name, symbol_name, MAX_LABEL_LENGTH - 1);
-    new_entry->symbol_name[MAX_LABEL_LENGTH - 1] = '\0';
-    new_entry->address = address;
-    new_entry->next = ctx->entry_list;
-    ctx->entry_list = new_entry;
-}
-
-/* Convert decimal to base 4 unique representation */
-char *decimal_to_base4(int decimal, int digits)
-{
-    char *result = malloc(digits + 1);
-    int i;
-    char base4_chars[] = {'a', 'b', 'c', 'd'};
-    unsigned int value;
-
-    if (!result)
-        return NULL;
-    result[digits] = '\0';
-
-    /* Handle negative numbers using two's complement within 10 bits */
-    if (decimal < 0)
-    {
-        value = (1 << 10) + decimal; /* Convert to positive using 10-bit two's complement */
-    }
-    else
-    {
-        value = decimal;
-    }
-
-    /* Ensure value fits in 10 bits (0-1023) */
-    value &= 0x3FF;
-    /* Convert to base 4 from right to left */
-    for (i = digits - 1; i >= 0; i--)
-    {
-        result[i] = base4_chars[value % 4];
-        value /= 4;
-    }
-    return result;
-}
-
-/* Free external references list */
-void free_ext_list(ExtRef *head)
-{
-    ExtRef *current = head;
-    while (current)
-    {
-        ExtRef *next = current->next;
-        free(current);
-        current = next;
-    }
-}
-
-/* Free entry points list */
-void free_entry_list(EntryPoint *head)
-{
-    EntryPoint *current = head;
-    while (current)
-    {
-        EntryPoint *next = current->next;
-        free(current);
-        current = next;
-    }
+    return (errors_count(errors) > errors_before) ? STAGE_ERRORS : STAGE_OK;
 }

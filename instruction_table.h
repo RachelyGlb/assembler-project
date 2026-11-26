@@ -10,6 +10,8 @@
 #ifndef INSTRUCTION_TABLE_H
 #define INSTRUCTION_TABLE_H
 
+#include <stddef.h>
+
 #include "common.h"
 
 /* One row of the instruction table. The structure is private. */
@@ -82,6 +84,14 @@ Boolean instruction_allows_destination(const Instruction *instruction,
  * Returns the register number, 0 to 7, or NOT_A_REGISTER.
  */
 int register_number(const char *name);
+
+/*
+ * Looks up a register by a name that is given as a piece of a longer text.
+ *   text    the first character of the name; no terminating zero is needed
+ *   length  the number of characters of the name
+ * Returns the register number, 0 to 7, or NOT_A_REGISTER.
+ */
+int register_number_text(const char *text, size_t length);
 
 /*
  * Looks up a directive by its name.

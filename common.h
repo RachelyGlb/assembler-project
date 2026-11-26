@@ -55,6 +55,18 @@ typedef enum
 /* The most words (code plus data) that a program may occupy (ALG-15). */
 #define MAX_PROGRAM_WORDS (MEMORY_SIZE - FIRST_LOAD_ADDRESS)
 
+/* The number of bits of a machine word and of a register (M-2, M-4). */
+#define WORD_BITS 10
+
+/*
+ * The number of bits, bits 9-2 of an additional word, that hold an
+ * immediate operand or an address (ADR-3, ADR-5).
+ */
+#define OPERAND_FIELD_BITS 8
+
+/* The most operands that an instruction can have (ENC-1). */
+#define MAX_OPERAND_COUNT 2
+
 /* The number of general registers, r0 to r7 (M-2). */
 #define REGISTER_COUNT 8
 
