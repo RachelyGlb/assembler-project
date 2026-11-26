@@ -16,7 +16,9 @@
 # For every case the inputs are copied into a fresh scratch directory under
 # tests/out/<group>/<case>/, together with the files of the optional
 # directory stale/ of the case (files "left over from an earlier run", SPEC
-# OUT-14). The binary is run there, and the result is compared with the
+# OUT-14). A command-line case may also have a script setup.sh, which is run
+# with sh inside the scratch directory before the binary. The binary is run
+# there, and the result is compared with the
 # expected files stored next to the input. Standard output is compared in
 # full: the diagnostics in their order (SPEC ERR-R17), and no other line may
 # appear (SPEC ERR-R15) except the usage line of a run without arguments
@@ -40,6 +42,7 @@ GROUPS_ALL="valid errors cli"
 OUTPUT_EXTS="am ob ent ext"
 STALE_DIR=stale
 OTHER_LINES_FILE=expected_other_lines
+SETUP_FILE=setup.sh
 TIME_LIMIT=5
 STATUS_TIMEOUT=124
 STATUS_SIGNAL_BASE=128
@@ -103,6 +106,21 @@ prepare() {
             [ -f "$src" ] && cp "$src" "$scratch/"
         done
     fi
+}
+
+# Runs the optional script setup.sh of a command-line case with sh, inside
+# the scratch directory, after the inputs were copied and before the binary
+# is started. It prepares what plain input files cannot express, for example
+# a directory in the place of a source file (SPEC CLI-12). The script is
+# taken only from the directory of the case itself and is not copied.
+#   $1  case directory
+run_setup() {
+    [ -f "$1/$SETUP_FILE" ] || return 0
+    if ! (cd "$scratch" && sh "$1/$SETUP_FILE") > /dev/null 2>&1; then
+        fail "$SETUP_FILE failed"
+        return 1
+    fi
+    return 0
 }
 
 # Runs the binary inside the scratch directory with the given arguments.
@@ -287,10 +305,12 @@ run_errors() {
 # "expected_messages" (no such file: none expected), and the number of
 # stdout lines that are not diagnostics from "expected_other_lines" (no such
 # file: none allowed). Every expected output file must be identical and no
-# other output file may exist.
+# other output file may exist. A case may have a script "setup.sh" (see
+# run_setup).
 #   $1  case name, $2  case directory
 run_cli() {
     prepare cli "$1" "$2"
+    run_setup "$2" || return
     set -f
     # The arguments are split on whitespace on purpose.
     # shellcheck disable=SC2046

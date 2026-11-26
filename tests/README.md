@@ -23,7 +23,8 @@ The runner is written in POSIX sh. It prints one line per case,
 
 Each case runs in a fresh scratch directory, `tests/out/<group>/<case>/`,
 that receives only the `.as` files of the case and, if the case has a
-directory `stale/`, the files in it; this keeps the source tree clean and
+directory `stale/`, the files in it (a command-line case may also run a
+script there, see "Setup scripts"); this keeps the source tree clean and
 makes "this file must not exist after the run" checkable (OUT-14). The
 scratch directory of a passing case is deleted. For a failing case it is
 kept and holds the files the assembler wrote, `stdout.txt`, `stderr.txt` and
@@ -58,6 +59,8 @@ tests/
     *.as                   inputs
     *.am *.ob *.ent *.ext  expected outputs
     stale/                 optional
+    setup.sh               optional: run in the scratch directory before
+                           the assembler (see "Setup scripts")
   out/                     scratch directories (generated, ignored by git)
   sh/                      older ad-hoc scripts; not used by this suite
 ```
@@ -120,11 +123,29 @@ have been removed ("exists but must not exist"), and a stale file with an
 expected counterpart must have been replaced (it is compared byte for byte,
 and the stale content is always different from the expected content).
 
+### Setup scripts
+
+A command-line case may have a file `setup.sh`. After the `.as` files and
+the stale files were copied, and before the assembler is started, the runner
+executes it with `sh`, with the scratch directory as the current directory.
+It exists for what plain input files cannot express: a directory in the
+place of a source file (CLI-12), or a source file inside a subdirectory. The
+rules are deliberately narrow: only the script of the case's own directory
+is run, it is not copied into the scratch directory, its output is
+discarded, and it must touch nothing outside the current directory. If the
+script fails, the case fails with `setup.sh failed` and the assembler is not
+run. Cases in `valid/` and `errors/` have no such script.
+
+The output files are compared in the scratch directory itself only. For an
+argument with a directory part (`cli/argument_with_directory`) the runner
+therefore checks the messages and the exit status, not the files written
+into the subdirectory.
+
 ## Conventions for writing cases
 
 - Every input ends with a newline, uses LF line endings and holds at least
   one instruction or data directive. **The cases listed below break this
-  convention on purpose** (SYN-24, SYN-25, SYN-8, OUT-15); their bytes are
+  convention on purpose** (SYN-24, SYN-25, SYN-26, SYN-8, OUT-15); their bytes are
   exact, they were written with `printf`, and they must not be "repaired" by
   an editor or by git. `tests/.gitattributes` (`* -text`) turns off every
   line-ending conversion under `tests/`.
@@ -142,6 +163,7 @@ and the stale content is always different from the expected content).
   | `errors/crlf_line_too_long` | CR LF line endings; one line ends CR CR LF. |
   | `errors/cr_inside_string` | CR LF line endings and a CR inside a string. |
   | `errors/string_illegal_char` | Control and non-ASCII bytes inside strings. |
+  | `errors/nul_byte` | NUL bytes (0x00) inside seven lines; one of them is a comment line of 82 bytes. Not a text file: recreate it with `printf` only. |
 
 - A line holds at most one error, except in the three `one_message_per_line*`
   cases and in the cases about faulty `mcro` lines, which exist to check
@@ -163,11 +185,16 @@ and the stale content is always different from the expected content).
   `mcroend` (MAC-7) and expect no further message for the body lines or for
   the `mcroend` line (MAC-38).
 - A test for ERR-41 has no other erroneous line at or before the line that
-  crosses the limit (Q-37).
+  crosses the limit (Q-37). ERR-41 is reported once per file (ALG-17), so
+  each `.mat` line with huge dimensions has a case of its own.
+- A line whose operand is a reserved word, an ill-formed name or an
+  over-long name is the only erroneous line of its case, because the stage
+  that reports it is undecided (Q-39) and the stage decides which other
+  messages a run prints.
 
 ## Not tested (undecided in SPEC 6.1, or not observable)
 
-The suite stays away from the inputs of the four open questions, exactly as
+The suite stays away from the inputs of the open questions, exactly as
 SPEC 6.1 instructs.
 
 | Input or behaviour | Open question | What the suite does |
@@ -176,11 +203,19 @@ SPEC 6.1 instructs.
 | A `mcro` line, a `mcroend` line or a macro call that is longer than 80 characters | Q-35 | Over-long lines are ordinary lines, comment lines or macro body lines only. |
 | A `mcroend` line while no definition is open, plain or as `L: mcroend` | Q-36 | Every `mcroend` line closes an open definition. |
 | Memory overflow together with another error at or before the line that crosses the limit | Q-37 | In the ERR-41 cases the first other erroneous line comes after the line that crosses the limit. |
+| A `mcro` with no `mcroend` before the end of the file | Q-38 | No case leaves a definition open. |
+| A reserved word, an ill-formed name or an over-long name as an operand; a macro name as the operand of `.extern` | Q-39 | The three `errors/operand_*` cases assert only that the line gets exactly one error, and hold no other erroneous line. No case gives a macro name to `.extern`. |
+| A NUL byte together with a `mcro` line, a `mcroend` line, a macro call, or a line discarded after a faulty `mcro` line | Q-35 and MAC-38 by analogy | In `errors/nul_byte` the NUL bytes stand in ordinary lines, comment lines and one body line of a correct definition. |
 
 Also outside the suite: the inputs that SPEC declares undefined (nested macro
 definitions, a missing `mcroend`, a macro used before its definition, text
 before `mcroend`; MAC-6, MAC-7, MAC-8, MAC-20) and allocation failure
-(ERR-R10), which a test cannot provoke.
+(ERR-R10), which the runner cannot provoke (it would need a memory limit
+around the binary, and the point of failure depends on the platform). A read
+error in the middle of a file (the second half of CLI-12) cannot be produced
+portably either; the directory cases stand for it. SYN-26 and CLI-12 are
+project decisions that still wait for the owner's confirmation (Q-40); their
+cases assert the rules as written.
 
 Rules whose effect cannot be seen from outside, and what is checked instead:
 
@@ -200,7 +235,7 @@ Rules whose effect cannot be seen from outside, and what is checked instead:
 
 | ERR | Cases |
 |---|---|
-| ERR-1 | `cli/missing_file_last`, `cli/missing_file_only`, `cli/missing_file_first`, `cli/missing_file_middle`, `cli/missing_files_several`, `cli/as_suffix_argument`, `cli/order_several_files`, `cli/stale_files_of_missing_file` |
+| ERR-1 | `cli/missing_file_last`, `cli/missing_file_only`, `cli/missing_file_first`, `cli/missing_file_middle`, `cli/missing_files_several`, `cli/as_suffix_argument`, `cli/order_several_files`, `cli/stale_files_of_missing_file`, `cli/missing_file_long_name`, `cli/argument_with_directory`, `cli/dash_arguments` |
 | ERR-2 | `errors/macro_name_reserved`, `errors/macro_name_reserved_mcro`, `errors/faulty_mcro_body_is_silent` |
 | ERR-3 | `errors/macro_def_extra_text`, `errors/preassembler_error_hides_pass_errors`, `errors/faulty_mcro_body_is_silent`, `errors/faulty_mcro_name_is_not_a_macro` |
 | ERR-4 | `errors/macro_end_extra_text`, `errors/one_message_per_line_preassembler` |
@@ -209,12 +244,12 @@ Rules whose effect cannot be seen from outside, and what is checked instead:
 | ERR-7 | `errors/macro_call_extra_text`, and as the probe for the state of the macro table in the `label_before_*` and `faulty_mcro_*` cases |
 | ERR-8 | `errors/macro_duplicate_name`, `errors/faulty_mcro_body_is_silent`, `errors/faulty_mcro_name_is_not_a_macro`, `errors/label_before_mcro` |
 | ERR-9 | `errors/label_before_mcro`, `errors/label_before_mcro_faulty`, `errors/label_before_mcroend`, `errors/label_before_macro_call`, `errors/faulty_mcro_name_is_not_a_macro`; not ERR-9: `errors/label_not_attached_macro_lines` |
-| ERR-10 | `errors/line_too_long`, `errors/crlf_line_too_long` |
+| ERR-10 | `errors/line_too_long`, `errors/crlf_line_too_long`, `errors/nul_byte` (a line that is too long and holds a NUL byte) |
 | ERR-11 | `errors/label_invalid_chars` |
 | ERR-12 | `errors/label_too_long` |
 | ERR-13 | `errors/label_reserved_word`, `errors/label_reserved_mcro` |
 | ERR-14 | `errors/label_same_as_macro` |
-| ERR-15 | `errors/label_duplicate`, `errors/label_on_error_line_is_defined` |
+| ERR-15 | `errors/label_duplicate`, `errors/label_on_error_line_is_defined`, `errors/label_on_err38_err45_line_is_defined` |
 | ERR-16 | `errors/label_space_before_colon` |
 | ERR-17 | `errors/unknown_operation`, `errors/macro_nested_call_not_expanded`, `errors/first_pass_error_hides_second_pass`, `errors/line_numbers_after_macro`, `errors/line_numbers_in_macro_body` |
 | ERR-18 | `errors/unknown_directive` |
@@ -237,18 +272,21 @@ Rules whose effect cannot be seen from outside, and what is checked instead:
 | ERR-35 | `errors/missing_space_after_operation` |
 | ERR-36 | `errors/missing_space_after_directive` |
 | ERR-37 | `errors/matrix_operand_whitespace` |
-| ERR-38 | `errors/label_no_space_after_colon` |
-| ERR-39 | `errors/immediate_out_of_range`, `errors/data_out_of_range` |
+| ERR-38 | `errors/label_no_space_after_colon`, `errors/label_on_err38_err45_line_is_defined` |
+| ERR-39 | `errors/immediate_out_of_range`, `errors/data_out_of_range`, `errors/number_wraps_around` |
 | ERR-40 | `errors/mat_too_many_values` |
-| ERR-41 | `errors/memory_overflow`, `errors/memory_overflow_reported_once`, `errors/memory_overflow_data_before_code`, `errors/memory_overflow_code_only`, `errors/memory_overflow_in_macro` |
+| ERR-41 | `errors/memory_overflow`, `errors/memory_overflow_reported_once`, `errors/memory_overflow_data_before_code`, `errors/memory_overflow_code_only`, `errors/memory_overflow_in_macro`, `errors/mat_dimension_huge`, `errors/mat_dimensions_product_huge`, `errors/mat_dimensions_product_wraps_32`, `errors/mat_dimension_wraps_32`, `errors/mat_dimension_wraps_64` |
 | ERR-42 | `errors/matrix_operand_no_label` |
 | ERR-43 | `errors/semicolon_not_first` |
 | ERR-44 | `errors/mat_dimension_invalid` |
-| ERR-45 | `errors/label_alone` |
-| ERR-50 | `errors/undefined_symbol`, `errors/line_numbers_second_pass_macro`, `errors/one_message_per_line_second_pass`, `errors/order_first_pass_before_second_pass`, `errors/warning_label_is_not_defined`, `errors/macro_name_not_first_word` |
+| ERR-45 | `errors/label_alone`, `errors/label_on_err38_err45_line_is_defined` |
+| ERR-46 | `errors/nul_byte` |
+| ERR-47 | `cli/source_is_directory`, `cli/source_is_directory_stale` |
+| ERR-50 | `errors/undefined_symbol`, `errors/line_numbers_second_pass_macro`, `errors/one_message_per_line_second_pass`, `errors/order_first_pass_before_second_pass`, `errors/warning_label_is_not_defined`, `errors/macro_name_not_first_word`, `errors/order_macro_warning_and_second_pass` |
 | ERR-51 | `errors/entry_undefined`, `errors/line_numbers_second_pass_macro` |
 | ERR-52 | `errors/entry_and_extern` |
 | ERR-53 | `errors/extern_then_label`, `errors/label_then_extern`, `errors/extern_label_conflict_data`, `errors/warning_line_with_error` |
+| no ERR ID (Q-39) | `errors/operand_reserved_word`, `errors/operand_ill_formed_name`, `errors/operand_name_too_long` |
 | WRN-1 | `valid/warning_label_before_entry`, `valid/warning_label_before_extern`, `valid/warning_label_not_in_symbol_table`, `valid/warning_in_macro_body`, `errors/warning_label_is_not_defined`, `errors/warning_line_with_error`, `errors/order_first_pass_before_second_pass`, `errors/order_macro_defined_late`, `cli/warnings_only_status_zero`, `cli/missing_file_middle`, `cli/order_several_files` |
 
 ### Rules about the output as a whole
@@ -258,9 +296,9 @@ Rules whose effect cannot be seen from outside, and what is checked instead:
 | ERR-R15 (nothing but diagnostics on `stdout`) | every case, through the runner; `cli/no_arguments` for the usage line (CLI-10) |
 | ERR-R16 (one message per line) | `errors/one_message_per_line`, `errors/one_message_per_line_preassembler`, `errors/one_message_per_line_second_pass`, `errors/warning_line_with_error`, and the `label_before_*` and `faulty_mcro_*` cases |
 | ERR-R17 (order) | every case, through the runner; specifically `errors/order_first_pass_before_second_pass`, `errors/order_macro_body_called_twice`, `errors/order_macro_defined_late`, `errors/line_numbers_in_macro_body`, `errors/line_numbers_second_pass_macro`, `cli/order_several_files`, `cli/missing_file_middle` |
-| OUT-14 (stale files) | `valid/stale_ent_ext_removed`, `valid/stale_files_replaced`, `valid/stale_ext_removed_extern_unused`, `errors/stale_files_preassembler_error`, `errors/stale_files_first_pass_error`, `errors/stale_files_second_pass_error`, `cli/stale_files_of_missing_file` |
+| OUT-14 (stale files) | `valid/stale_ent_ext_removed`, `valid/stale_files_replaced`, `valid/stale_ext_removed_extern_unused`, `errors/stale_files_preassembler_error`, `errors/stale_files_first_pass_error`, `errors/stale_files_second_pass_error`, `cli/stale_files_of_missing_file`, `cli/source_is_directory_stale` |
 | SYN-24, SYN-25, OUT-15 | `valid/last_line_no_newline`, `valid/last_line_cr_no_newline`, `valid/comment_only_no_newline`, `valid/crlf_line_endings`, `valid/cr_inside_line`, `valid/empty_file`, `valid/comments_only`, `errors/crlf_line_too_long`, `errors/cr_inside_string` |
-| CLI-10, CLI-11 | `cli/no_arguments`; `cli/missing_file_first`, `cli/missing_file_middle`, `cli/missing_files_several`, `cli/missing_file_last` |
+| CLI-10, CLI-11 | `cli/no_arguments`; `cli/missing_file_first`, `cli/missing_file_middle`, `cli/missing_files_several`, `cli/missing_file_last`; CLI-12: `cli/source_is_directory`, `cli/source_is_directory_stale` |
 
 ### Valid programs (`tests/valid`)
 
@@ -283,6 +321,7 @@ Rules whose effect cannot be seen from outside, and what is checked instead:
 | `string_empty` | DIR-32 | An empty string allocates exactly one zero word. |
 | `string_punctuation` | SYN-22, DIR-10 | Spaces, punctuation, a backslash (no escapes) and statement-like text inside strings. |
 | `string_inner_quote` | SYN-22 | A quotation mark inside a string is an ordinary character; the string ends at the last one. |
+| `string_two_quoted_parts` | SYN-22, DIR-10 | `.string "a" "b"` is one string of five characters (a, quotation mark, space, quotation mark, b), because the string ends at the last quotation mark. |
 | `mat_full` | DIR-12, DIR-14, DIR-15, DIR-16 | .mat with a value for every cell, stored in row order. |
 | `mat_partial` | DIR-24 | .mat with fewer values than cells: the rest are zero. |
 | `mat_no_values` | DIR-13 | .mat without values still takes rows x columns zero words. |
@@ -431,6 +470,18 @@ Rules whose effect cannot be seen from outside, and what is checked instead:
 | `crlf_line_too_long` | SYN-25, ERR-10 | CR LF input: 80 characters plus CR LF is legal, 81 is an error, and 80 plus CR CR LF is 81 characters. |
 | `cr_inside_string` | SYN-25, ERR-32 | A CR inside a string is an illegal character; the .am file has LF endings and keeps the inner CR. |
 | `macro_name_not_first_word` | MAC-3, MAC-16, ERR-50 | A macro name used as an operand is not expanded (the .am file keeps the line) and is an undefined symbol. |
+| `nul_byte` | SYN-26, ERR-46, ERR-R16, MAC-23 | A NUL byte in an instruction, before text that would be an error, in a short comment, in a comment of 82 bytes (one message), in a macro body line (one message although called twice), in a string and alone on a line: one pre-assembler message each, no .am. **Fails until defect D-1 is fixed.** |
+| `label_on_err38_err45_line_is_defined` | LBL-23, ERR-38, ERR-45, ERR-15 | The label of an `A:.data 1` line, of a `C:stop` line and of a label-alone line is still defined: a later definition of each is a duplicate. |
+| `number_wraps_around` | ERR-39, SYN-21 | `.data`, `.mat` and immediate values that wrap around 32 or 64 bits to a legal number (2^32+1, 2^64+1, 2^32-512, 2^32-128 and others) are out of range. |
+| `mat_dimension_huge` | ERR-41, ALG-17 | `.mat [99999999999][2]`: memory overflow on that line, nothing else. |
+| `mat_dimensions_product_huge` | ERR-41, ALG-17 | `.mat [200][200]`: 40000 words. |
+| `mat_dimensions_product_wraps_32` | ERR-41, ALG-17 | `.mat [65536][65536]`: the product is 2^32 and must not wrap to 0. |
+| `mat_dimension_wraps_32` | ERR-41, ALG-17 | `.mat [4294967297][1] 5`: the dimension must not wrap to 1. |
+| `mat_dimension_wraps_64` | ERR-41, ALG-17 | `.mat [18446744073709551617][1] 5`: the same for 64 bits. |
+| `operand_reserved_word` | Q-39, ERR-R16 | `jmp mov`: exactly one error on the line (the stage is undecided). |
+| `operand_ill_formed_name` | Q-39, ERR-R16 | `jmp 1abc`: exactly one error on the line. |
+| `operand_name_too_long` | Q-39, ERR-R16 | An operand of 31 letters: exactly one error on the line. |
+| `order_macro_warning_and_second_pass` | ERR-R17, ERR-R12, DIR-35, ERR-50 | A macro body with a warning line and an undefined symbol, called three times between other second-pass errors: all warnings first, then the errors in .am order. |
 
 ### Command line (`tests/cli`)
 
@@ -451,3 +502,10 @@ Rules whose effect cannot be seen from outside, and what is checked instead:
 | `order_several_files` | ERR-R17, CLI-3 | Five arguments with first-pass errors, pre-assembler errors, a missing file, a warning plus a second-pass error, and a warning: messages in command-line order. |
 | `warnings_only_status_zero` | ERR-R14, CLI-9, WRN-1 | Two files whose only messages are warnings: outputs written, status 0. |
 | `stale_files_of_missing_file` | OUT-14, CLI-11 | Stale outputs of a name whose .as file does not exist are removed; stale .ent and .ext of the valid file too. |
+| `source_is_directory` | CLI-12, ERR-47, CLI-9 | `d.as` is a directory (made by `setup.sh`): one message without a line number, no output file for `d`, the next file is assembled, status 1. **Fails until defect D-2 is fixed.** |
+| `source_is_directory_stale` | CLI-12, ERR-47, OUT-14 | The same with stale `d.am`, `d.ob`, `d.ent`, `d.ext`: all four are removed. **Fails until defect D-2 is fixed.** |
+| `same_file_twice` | CLI-3, CLI-9, ERR-R17 | `good bad bad good`: the faulty file is reported once per mention, the outputs of the valid one stay, status 1. |
+| `same_valid_file_twice` | CLI-3, CLI-9 | The same valid name twice: no message, outputs written, status 0. |
+| `missing_file_long_name` | ERR-1, CLI-11 | A base name of 250 characters with no file: one message, the next file is assembled, status 1. |
+| `argument_with_directory` | CLI-8, ERR-R13, ERR-1 | Arguments `sub/e1` and `sub/nosuch` (`setup.sh` moves `e1.as` into `sub/`): the messages start with `sub/e1.as:2:` and `sub/nosuch.as:`. |
+| `dash_arguments` | CLI-8, ERR-1 | `--` and `-h` are file names like any other: `--.as` and `-h.as` cannot be opened. |
