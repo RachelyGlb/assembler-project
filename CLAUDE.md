@@ -28,6 +28,15 @@ The course materials are not ours to publish. They are listed in `.gitignore`
 and must never be committed. The code must be original: do not read or use
 other people's solutions to this assignment.
 
+One exception, granted by the owner on 2026-11-26: two repositories written by
+friends of the owner may be consulted for structure only, meaning the module
+split and the layout of the repository, the README and the demo. No code and
+no logic may be copied or adapted from them, and they are never a source for
+what the assembler should do.
+
+- https://github.com/yishai209/System-Programming-Assembler
+- https://github.com/NaamaTzadok/Assembler-C-Final-Project
+
 ## Build and test
 
 ```
