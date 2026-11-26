@@ -20,7 +20,6 @@ assembler.exe
 /*.ob
 /*.ent
 /*.ext
-!/formal_tester.ob
 
 # Scratch directories of the test runner (tests/run_tests.sh)
 /tests/out/

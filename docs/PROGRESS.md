@@ -46,7 +46,7 @@ returns a `StageResult` (`STAGE_OK`, `STAGE_ERRORS`, `STAGE_FATAL`); an
 allocation failure is returned up to the driver as `STAGE_FATAL` and never
 handled by calling `exit` inside a module; every diagnostic goes through
 `errors_report` or `errors_warn` with the line translated by
-`line_map_source_line`; a line is parsed once, by `statement_parse`, and a
+`line_map_source_line`; each pass parses a line with the one parser, `statement_parse`, and a
 syntax error yields a statement for which `statement_is_valid` is false.
 
 Readings the code makes where SPEC section 6.1 is still open (to be confirmed
@@ -186,13 +186,13 @@ failures, BUG-30 memory bound, and anything the earlier steps unmask), until
 
 ## Where the course materials come from
 
-They are not in the repository. In a new session, copy them from the project's
-shared files into `docs/` and extract the text:
+They are not in the repository. The owner keeps three PDF files in the
+project's shared files: the assignment booklet, the official corrections
+sheet (both with Hebrew file names) and the forum Q&A (`Task 14.pdf`). In a
+new session, copy them into `docs/` as `booklet.pdf`, `corrections.pdf` and
+`Task_14.pdf`, then extract the text:
 
 ```
-cp "/mnt/project-files/מטלה 14.pdf" docs/booklet.pdf
-cp "/mnt/project-files/תיקונים לטעויות המופיעות בממן.pdf" docs/corrections.pdf
-cp "/mnt/project-files/Task 14.pdf" docs/Task_14.pdf
 pdftotext -layout docs/booklet.pdf docs/booklet.txt
 pdftotext -layout docs/corrections.pdf docs/corrections.txt
 pdftotext -layout docs/Task_14.pdf docs/forum.txt
