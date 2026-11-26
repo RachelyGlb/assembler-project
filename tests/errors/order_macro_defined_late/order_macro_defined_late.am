@@ -1,0 +1,10 @@
+MAIN:   clr r1
+        foo
+        inc
+        baz
+IGN:    .extern W
+        bar r1
+        dec
+        baz
+IGN:    .extern W
+        stop

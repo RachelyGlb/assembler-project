@@ -1,0 +1,9 @@
+MAIN:   clr r1
+        inc r1
+        prn r1
+        inc r1
+        prn r1
+        cmp r1, #3
+        inc r1
+        prn r1
+        stop

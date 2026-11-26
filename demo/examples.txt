@@ -1,0 +1,41 @@
+# The examples of the demo page, in the order in which they are shown.
+#
+# One example per line, three fields separated by '|':
+#
+#   <case directory, relative to the repository root> | <title> | <description>
+#
+# The first directory below tests/ decides how the case is run and checked:
+#   tests/valid/<name>   ./assembler <name>; the run must exit with status 0.
+#   tests/errors/<name>  ./assembler <name>; the run must print an error.
+#   tests/cli/<name>     ./assembler <the words of the file "args">, with every
+#                        .as file of the case present; it must print a
+#                        diagnostic.
+# Only the .as files (and "args") are read. Everything else on the page comes
+# from running the compiled assembler. Empty lines and lines that start with
+# '#' are ignored. The title and the description are the only hand-written
+# text of an example; keep the description to one sentence.
+
+tests/valid/macro_single | A first small program | Three instructions and one macro: the pre-assembler replaces the call of inc_twice by its two body lines, and the passes translate the result into six machine words.
+tests/valid/all_instructions | All sixteen operations | Every operation of the machine appears exactly once, so the table below walks through all sixteen opcodes.
+tests/valid/modes_mov | The four addressing modes | The mov operation with every legal pair of source and destination modes: immediate, direct, matrix and register.
+tests/valid/register_word_sharing | Two registers share one word | Two register operands are packed into a single extra word, while a register next to any other kind of operand gets a word of its own.
+tests/valid/data_values | Data words and negative numbers | The .data directive stores signed integers as 10-bit two's complement words, from -512 to 511.
+tests/valid/mat_full | A matrix | The .mat directive reserves rows times columns words in row order, and a matrix operand costs two extra words: the address of the matrix and a word with the two index registers.
+tests/valid/macro_with_directives | Macros that hold labels and directives | Macro bodies may contain anything, including labels and directives; the two passes only ever see the expanded .am file.
+tests/valid/forward_references | Forward references | Every label is used before it is defined, which is the reason the assembler needs two passes.
+tests/valid/extern_multiple_uses | External symbols | A word that refers to an external symbol is left for the linker (address zero, E), and every such word is listed in the .ext file.
+tests/valid/ps | A complete program with entries and externals | A program that uses a string, numbers, a matrix, two entry symbols and two external symbols, and therefore produces all four output files.
+tests/valid/warning_label_before_entry | A warning | A label in front of .entry has no meaning: the assembler reports a warning, ignores the label and still writes every output file.
+
+tests/errors/macro_name_reserved | Pre-assembler: reserved words as macro names | A macro may not be named after an operation, a directive or a register; the pre-assembler reports every such definition and writes no .am file.
+tests/errors/macro_unclosed | Pre-assembler: a macro that is never closed | The definition of m1 has no mcroend line, which is reported once, on the line that opened it.
+tests/errors/preassembler_error_hides_pass_errors | Pre-assembler: later stages do not run | After a pre-assembler error the two passes are skipped, so the unknown operation on line 5 is not reported in this run.
+tests/errors/label_duplicate | First pass: duplicate labels | A label may be defined only once, whatever kind of line it stands on; names that differ in letter case are different labels.
+tests/errors/unknown_operation | First pass: unknown operations | Operation names are lowercase and fixed; the assembler reports every unknown name and keeps checking the rest of the file.
+tests/errors/immediate_out_of_range | First pass: immediate operands out of range | An immediate operand is stored in eight bits, so it must lie between -128 and 127.
+tests/errors/line_numbers_in_macro_body | First pass: errors inside macro bodies | An error in a macro body is reported with the line number of the body line in the original source, once for every call of the macro.
+tests/errors/first_pass_error_hides_second_pass | First pass: the second pass does not run | After a first-pass error the second pass is skipped, so the undefined symbols on lines 3 and 4 are not reported in this run.
+tests/errors/undefined_symbol | Second pass: undefined symbols | Whether a symbol exists is known only after the whole file has been read, so these errors come from the second pass.
+tests/errors/entry_and_extern | Second pass: a symbol that is both entry and external | A symbol cannot be exported by this file and imported from another file at the same time.
+
+tests/cli/order_several_files | Several files in one run | Five names on the command line: files with errors of different stages, a name without a source file, and a valid file that is still assembled.

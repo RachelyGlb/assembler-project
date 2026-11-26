@@ -1,0 +1,12 @@
+; CR LF line endings
+
+.entry MAIN
+MAIN:   mov #-3, r1
+        inc r1
+        dec r2
+;0000000000000000000000000000000000000000000000000000000000000000000000000000000
+STR:    .string "ab"                                                            
+        inc r1
+        dec r2
+NUM:    .data 7, -1
+        stop

@@ -1,0 +1,6 @@
+MAIN:   jmp E
+        dec r2
+        dec r2
+E:      stop
+X:      .string "x"
+.entry X

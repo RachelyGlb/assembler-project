@@ -1,0 +1,3 @@
+MAIN:   mov r1, r2
+        inc r1
+END:    stop

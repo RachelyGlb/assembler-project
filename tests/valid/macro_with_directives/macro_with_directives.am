@@ -1,0 +1,8 @@
+MAIN:   mov TAB[r0][r1], r2
+        .data 1, 2
+        .string "m"
+        stop
+TAB:    .mat [1][2] 7
+.entry TAB
+        .data 1, 2
+        .string "m"

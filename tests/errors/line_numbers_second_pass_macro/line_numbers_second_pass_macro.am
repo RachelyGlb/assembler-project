@@ -1,0 +1,8 @@
+MAIN:   clr r1
+        inc r1
+        jmp NOWHERE
+        prn MISSING
+        inc r1
+        jmp NOWHERE
+.entry ABSENT
+        stop

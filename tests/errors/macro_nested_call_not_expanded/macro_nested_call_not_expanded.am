@@ -1,0 +1,5 @@
+MAIN:   clr r1
+        inc r1
+        dec r1
+        inner
+        stop

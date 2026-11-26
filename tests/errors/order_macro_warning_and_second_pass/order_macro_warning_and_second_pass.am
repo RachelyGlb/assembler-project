@@ -1,0 +1,13 @@
+MAIN:   dec UNDEF1
+IGN:    .extern W
+        jmp NOWHERE
+        inc r1
+        prn UNDEF2
+IGN:    .extern W
+        jmp NOWHERE
+        inc r1
+IGN:    .extern W
+        jmp NOWHERE
+        inc r1
+X:      .entry MAIN
+        stop

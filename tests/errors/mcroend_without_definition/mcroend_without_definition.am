@@ -1,0 +1,5 @@
+MAIN:   inc r1
+        inc r2
+mcroend
+mcroend junk
+        stop
