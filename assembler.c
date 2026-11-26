@@ -146,10 +146,28 @@ static void job_release(FileJob *job)
 }
 
 /*
+ * Removes the .am file when a pass could not read it back, so that no
+ * output file is left for the source file (CLI-12). The pass has already
+ * reported the failure. The file is closed first, because a file that is
+ * still open cannot be removed on every system.
+ *   job  the job, with its .am file open
+ */
+static void discard_unreadable_expanded(FileJob *job)
+{
+    if (ferror(job->expanded))
+    {
+        fclose(job->expanded);
+        job->expanded = NULL;
+        remove(job->am_name);
+    }
+}
+
+/*
  * Runs the stages that work on the expanded file: the first pass, the
  * second pass and the output writer. Each stage runs only when the stage
  * before it found no error (ERR-R6, ERR-R7); both passes read the .am file
- * from its beginning (ALG-8).
+ * from its beginning (ALG-8). A .am file that a pass could not read is
+ * removed (CLI-12).
  *   job  the prepared job, after a pre-assembler that succeeded
  * Returns STAGE_OK when the output files were written, STAGE_ERRORS when a
  * stage reported errors, STAGE_FATAL when memory ran out.
@@ -167,15 +185,15 @@ static StageResult job_assemble(FileJob *job)
     }
     result = first_pass(job->expanded, job->lines, job->macros, job->symbols,
                         job->image, job->errors);
-    if (result != STAGE_OK)
+    if (result == STAGE_OK)
     {
-        return result;
+        rewind(job->expanded);
+        result = second_pass(job->expanded, job->lines, job->symbols,
+                             job->image, job->externals, job->errors);
     }
-    rewind(job->expanded);
-    result = second_pass(job->expanded, job->lines, job->symbols, job->image,
-                         job->externals, job->errors);
     if (result != STAGE_OK)
     {
+        discard_unreadable_expanded(job);
         return result;
     }
     return write_output_files(job->base_name, job->image, job->symbols,
@@ -187,8 +205,8 @@ static StageResult job_assemble(FileJob *job)
  * after the first stage that does not succeed.
  *   job  the prepared job
  * Returns STAGE_OK when the file was assembled, STAGE_ERRORS when it could
- * not be opened (ERR-1) or a stage found errors, STAGE_FATAL when memory
- * ran out.
+ * not be opened (ERR-1) or read (ERR-47) or a stage found errors,
+ * STAGE_FATAL when memory ran out.
  */
 static StageResult job_run(FileJob *job)
 {

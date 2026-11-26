@@ -3,7 +3,8 @@
  *
  * Nothing here knows about the assembly language. The functions that
  * allocate return NULL (or READ_NO_MEMORY) when memory is exhausted; the
- * caller owns what they return and frees it with free().
+ * caller owns what they return and frees it with free(). Nothing here
+ * prints: a failure is returned and the caller reports it.
  */
 #ifndef UTIL_H
 #define UTIL_H
@@ -18,6 +19,7 @@ typedef enum
 {
     READ_LINE,     /* A line was read into the buffer. */
     READ_END,      /* There is no further line. */
+    READ_ERROR,    /* The file could not be read (CLI-12). */
     READ_NO_MEMORY /* The buffer could not be enlarged. */
 } ReadStatus;
 
@@ -78,19 +80,21 @@ char *util_make_file_name(const char *base, const char *extension);
 /*
  * Reads the next line of a text file, of any length, into a heap buffer
  * that grows as needed. A last line without a newline is a complete line
- * (SYN-24). The newline is not stored.
+ * (SYN-24). The newline is not stored. A read error is never taken for the
+ * end of the file (CLI-12): the line that was being read is not returned.
  *   file                 the file to read from
  *   buffer               the address of the buffer pointer; *buffer must be
  *                        NULL before the first call and is reused by the
  *                        following calls. The caller frees it at the end,
- *                        also after READ_END and READ_NO_MEMORY.
+ *                        also after READ_END, READ_ERROR and READ_NO_MEMORY.
  *   capacity             the address of the buffer size; *capacity must be
  *                        0 before the first call
  *   drop_carriage_return TRUE to remove a carriage return that stands
  *                        immediately before the newline (SYN-25); this is
  *                        how a source file is read. FALSE keeps it.
  * Returns READ_LINE when *buffer holds the line as a string, READ_END at the
- * end of the file, READ_NO_MEMORY when the buffer could not grow.
+ * end of the file, READ_ERROR when a read failed, READ_NO_MEMORY when the
+ * buffer could not grow.
  */
 ReadStatus util_read_line(FILE *file, char **buffer, size_t *capacity,
                           Boolean drop_carriage_return);

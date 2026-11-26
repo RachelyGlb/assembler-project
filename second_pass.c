@@ -153,6 +153,17 @@ static void handle_line(SecondPass *pass, const char *line)
     statement_destroy(statement);
 }
 
+/*
+ * Reports that the .am file could not be read back (CLI-12, ERR-47). The
+ * message has no line number, like the one for a file that does not open.
+ *   errors  the diagnostics context of the file
+ */
+static void report_unreadable(ErrorContext *errors)
+{
+    errors_report(errors, NO_LINE, "cannot read the %s file",
+                  EXPANDED_EXTENSION);
+}
+
 /* Runs the second pass on one expanded source file; see second_pass.h. */
 StageResult second_pass(FILE *am_file, const LineMap *lines,
                         SymbolTable *symbols, MemoryImage *image,
@@ -182,6 +193,10 @@ StageResult second_pass(FILE *am_file, const LineMap *lines,
     if (status == READ_NO_MEMORY || pass.no_memory)
     {
         return STAGE_FATAL;
+    }
+    if (status == READ_ERROR)
+    {
+        report_unreadable(errors);
     }
     return (errors_count(errors) > errors_before) ? STAGE_ERRORS : STAGE_OK;
 }

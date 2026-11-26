@@ -477,7 +477,8 @@ static Boolean handle_line(Scan *scan, const char *line)
 }
 
 /*
- * Reads the whole source file and handles every line.
+ * Reads the whole source file and handles every line. A source file that
+ * cannot be read is reported here, without a line number (CLI-12, ERR-47).
  *   scan    the scan
  *   source  the .as file
  * Returns FALSE when memory is exhausted.
@@ -499,6 +500,10 @@ static Boolean scan_source(Scan *scan, FILE *source)
         }
     }
     free(line);
+    if (status == READ_ERROR)
+    {
+        errors_report(scan->errors, NO_LINE, "cannot read the source file");
+    }
     return (enough_memory && status != READ_NO_MEMORY) ? TRUE : FALSE;
 }
 

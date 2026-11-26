@@ -123,7 +123,8 @@ ReadStatus util_read_line(FILE *file, char **buffer, size_t *capacity,
 
     if (character == EOF)
     {
-        return READ_END;
+        /* getc gives EOF for a failed read as well (CLI-12). */
+        return ferror(file) ? READ_ERROR : READ_END;
     }
     while (character != EOF && character != NEWLINE)
     {
@@ -133,6 +134,11 @@ ReadStatus util_read_line(FILE *file, char **buffer, size_t *capacity,
         }
         (*buffer)[length++] = (char)character;
         character = getc(file);
+    }
+    /* A line that a failed read cut short is not a line (CLI-12). */
+    if (character == EOF && ferror(file))
+    {
+        return READ_ERROR;
     }
     /* An empty line stores no character, so the buffer may still be absent. */
     if (!reserve_character(buffer, capacity, length))
