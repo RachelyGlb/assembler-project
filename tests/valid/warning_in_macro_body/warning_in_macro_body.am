@@ -1,0 +1,7 @@
+MAIN:   inc r1
+IGN:    .extern W
+        jmp W
+IGN:    .extern W
+        jmp W
+OTHER:  .entry MAIN
+        stop

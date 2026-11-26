@@ -22,8 +22,9 @@ The runner is written in POSIX sh. It prints one line per case,
 (1 if a case failed, 2 if there is no binary to run).
 
 Each case runs in a fresh scratch directory, `tests/out/<group>/<case>/`,
-that receives only the `.as` files of the case; this keeps the source tree
-clean and makes "this file must not be created" checkable (SPEC Q-31). The
+that receives only the `.as` files of the case and, if the case has a
+directory `stale/`, the files in it; this keeps the source tree clean and
+makes "this file must not exist after the run" checkable (OUT-14). The
 scratch directory of a passing case is deleted. For a failing case it is
 kept and holds the files the assembler wrote, `stdout.txt`, `stderr.txt` and
 `diff.txt` with every check that failed. `tests/out/` is ignored by git. A
@@ -35,21 +36,28 @@ crash is a FAIL of that case and the run goes on.
 ```
 tests/
   run_tests.sh             the runner
+  .gitattributes           "* -text": git must not touch line endings here
   valid/<case>/            programs that must assemble
     <case>.as              input
     <case>.am              expected pre-assembler output (always present)
     <case>.ob              expected object file (always present)
     <case>.ent, <case>.ext expected only when SPEC says the file has content
+    <case>.expected        expected warnings; no such file means none
+    stale/                 optional: files present before the run (see below)
   errors/<case>/           programs with errors
     <case>.as              input
-    <case>.expected        expected diagnostics
+    <case>.expected        expected diagnostics, in order
     <case>.am              present only when the errors are found by the passes
+    stale/                 optional
   cli/<case>/              cases about the command line
     args                   the command-line arguments, separated by whitespace
     expected_status        the expected exit status
-    expected_messages      expected diagnostics; no such file means none
+    expected_messages      expected diagnostics, in order; no such file: none
+    expected_other_lines   number of stdout lines that are not diagnostics;
+                           no such file means 0 (only `no_arguments` has one)
     *.as                   inputs
     *.am *.ob *.ent *.ext  expected outputs
+    stale/                 optional
   out/                     scratch directories (generated, ignored by git)
   sh/                      older ad-hoc scripts; not used by this suite
 ```
@@ -63,66 +71,128 @@ Valid cases (`tests/valid`): the exit status is 0 (CLI-9); `.am` and `.ob`
 are byte-identical to the expected files (MAC-29, OUT-13); `.ent` and `.ext`
 hold exactly the expected lines, in any order (OUT-10), and end with a
 newline; an `.ent` or `.ext` with no expected file must not exist (OUT-2);
-no line of `stdout` is an error message.
+and `stdout` holds exactly the warnings of `<case>.expected`, which for most
+cases means that it is empty (ERR-R15).
 
 Error cases (`tests/errors`): the exit status is 1 (CLI-9); no `.ob`, `.ent`
 or `.ext` exists (ERR-R6); the `.am` file is byte-identical to the expected
 one when the case has one (errors found by the passes, OUT-11) and does not
-exist otherwise (errors found by the pre-assembler, MAC-23); and the
-diagnostics match `<case>.expected`.
-
-Diagnostics: only the lines of `stdout` that have the format of ERR-R13 or
-ERR-R14 are looked at, `<name>.as:<line>: error: <text>`,
-`<name>.as: error: <text>`, and the same with `warning:`. Each is reduced to
-`<line> <severity>`, or `- <severity>` when it has no line number, and the
-sorted list is compared with the sorted `<case>.expected`. The wording of a
-message is never compared, other lines of `stdout` are ignored (Q-26), and
-the order of the messages does not matter (Q-29). A message that names
-another file than `<case>.as` never matches. The line number is the line of
-the `.as` file (ERR-R12). A line `* error` in `<case>.expected` switches the
-case to severity-only comparison: the line numbers, and whether a message
-has one, are ignored. It is used where SPEC has not yet fixed the line
-(Q-30).
+exist otherwise (errors found by the pre-assembler, MAC-23); and `stdout`
+holds exactly the diagnostics of `<case>.expected`.
 
 Command-line cases (`tests/cli`): the exit status equals `expected_status`;
 every expected output file matches as above; no other `.am`, `.ob`, `.ent`
-or `.ext` file exists in the scratch directory; and the diagnostics, reduced
-to `<file> <line> <severity>`, match `expected_messages`.
+or `.ext` file exists in the scratch directory; and `stdout` holds exactly
+the diagnostics of `expected_messages`.
+
+### Standard output
+
+`stdout` is specified completely (ERR-R15), so all of it is checked, in every
+group:
+
+- Every line must have one of the four forms of ERR-R13 and ERR-R14:
+  `<name>.as:<line>: error: <text>`, `<name>.as: error: <text>`, and the same
+  two with `warning:`. Any other line (a success notice, progress text, an
+  empty line) fails the case. The one exception is `cli/no_arguments`, whose
+  `expected_other_lines` allows exactly one such line, the usage line of
+  CLI-10.
+- Each diagnostic is reduced to `<line> <severity>` (valid and error cases)
+  or `<file> <line> <severity>` (command-line cases); `<line>` is `-` for a
+  message without a line number. The wording is never compared (ERR-R13). In
+  a valid or error case a message that names another file than `<case>.as`
+  never matches.
+- The reduced list is compared with the expected file **line by line, in
+  order** (ERR-R17): files in command-line order; within a file the
+  pre-assembler messages in `.as` order, or else the first-pass messages
+  (errors and warnings) followed by the second-pass messages, each group in
+  the order of the `.am` file. The numbers are `.as` line numbers (ERR-R12),
+  so the expected files are not always ascending: a macro body line repeats
+  its number at every call. Because a line yields exactly one message
+  (ERR-R16), the number of lines is fixed as well.
+
+### Stale files
+
+A case may have a directory `stale/`. Its files are copied into the scratch
+directory before the run and stand for output files left over from an
+earlier run (OUT-14). Nothing else is special about them: the ordinary
+checks then prove the rule. A stale file with no expected counterpart must
+have been removed ("exists but must not exist"), and a stale file with an
+expected counterpart must have been replaced (it is compared byte for byte,
+and the stale content is always different from the expected content).
 
 ## Conventions for writing cases
 
 - Every input ends with a newline, uses LF line endings and holds at least
-  one instruction or data directive (Q-32).
-- A line holds at most one error (Q-29). An error case mixes erroneous lines
-  of one category with valid lines, so that "does not stop at the first
-  error" (ERR-R4) is checked as well.
+  one instruction or data directive. **The cases listed below break this
+  convention on purpose** (SYN-24, SYN-25, SYN-8, OUT-15); their bytes are
+  exact, they were written with `printf`, and they must not be "repaired" by
+  an editor or by git. `tests/.gitattributes` (`* -text`) turns off every
+  line-ending conversion under `tests/`.
+
+  | Case | What is unusual in the `.as` file |
+  |---|---|
+  | `valid/last_line_no_newline` | No newline after the last line. |
+  | `valid/last_line_cr_no_newline` | The file ends with a CR and no newline. |
+  | `valid/comment_only_no_newline` | One comment line, no newline. |
+  | `valid/crlf_line_endings` | CR LF line endings (the expected `.am` has LF). |
+  | `valid/cr_inside_line` | Lone CR characters inside lines; one line ends CR CR LF. |
+  | `valid/empty_file` | Zero bytes (the expected `.am` is empty too). |
+  | `valid/comments_only` | No statement at all. |
+  | `valid/whitespace_vt_ff` | Vertical tabs (0x0B) and form feeds (0x0C). |
+  | `errors/crlf_line_too_long` | CR LF line endings; one line ends CR CR LF. |
+  | `errors/cr_inside_string` | CR LF line endings and a CR inside a string. |
+  | `errors/string_illegal_char` | Control and non-ASCII bytes inside strings. |
+
+- A line holds at most one error, except in the three `one_message_per_line*`
+  cases and in the cases about faulty `mcro` lines, which exist to check
+  that such a line still yields exactly one message (ERR-R16). Since the
+  wording is free, nothing depends on which of the errors is reported.
+- An error case mixes erroneous lines with valid lines, so that "does not
+  stop at the first error" (ERR-R4) is checked as well.
 - A case holds errors of one stage only, because a pre-assembler error hides
   the errors of the passes and a first-pass error hides those of the second
-  pass (SPEC 5.2, 5.3). Three cases check exactly this hiding.
+  pass (SPEC 5.2, 5.3). Three cases check exactly this hiding. Warnings are
+  first-pass messages and may stand together with second-pass errors; the
+  `order_*` cases use this to check the order of the stages (ERR-R17).
 - Expected `.ob`, `.ent` and `.ext` files are computed from SPEC sections 2
   and 3. The two booklet examples are copied from SPEC section 4.
+- Expected diagnostics are written by hand from SPEC, in the order of
+  ERR-R17: for the passes, expand the macros first and then walk the `.am`
+  lines.
 - After a faulty `mcro` line the cases still close the definition with
   `mcroend` (MAC-7) and expect no further message for the body lines or for
-  the `mcroend` line.
+  the `mcroend` line (MAC-38).
+- A test for ERR-41 has no other erroneous line at or before the line that
+  crosses the limit (Q-37).
 
-## Not tested yet (undecided in SPEC 6.1)
+## Not tested (undecided in SPEC 6.1, or not observable)
+
+The suite stays away from the inputs of the four open questions, exactly as
+SPEC 6.1 instructs.
 
 | Input or behaviour | Open question | What the suite does |
 |---|---|---|
-| ERR-9: a label in front of `mcro`, `mcroend` or a macro call | Q-28 (reporting stage) | No case contains such a line. |
-| A label in front of `.entry` or `.extern` (DIR-18, DIR-22, the only warning in SPEC) | Q-27 | No case contains such a line; no case expects a warning. |
-| ERR-41, memory overflow: line number of the message | Q-30 (a) | `errors/memory_overflow` asserts one error, without its line. |
-| ERR-53 when the label comes before the `.extern` line: stage and line | Q-30 (b) | `errors/label_then_extern` asserts one error, without its line. The other order is fully asserted in `errors/extern_then_label`. |
-| Text on `stdout` when there is no error; notice for a run with no arguments | Q-26 | Only lines in the diagnostic format are read. |
-| Several messages for one line; order of the messages | Q-29 | One error per line; messages compared as an unordered collection. |
-| Output files left from an earlier run | Q-31 | Every case starts in an empty directory. |
-| Last line without a newline, CR LF line endings, a file with no statements | Q-32 | No such input. |
-| A file that cannot be opened followed by other files | Q-33 | The missing file is the only or the last argument. |
+| A label in front of a `.entry` line whose operand is undefined (ERR-51) or external (ERR-52): warning and second-pass error on one line | Q-34 | No case has a label in front of such a `.entry` line. Labels in front of `.entry` always name a defined, internal symbol. |
+| A `mcro` line, a `mcroend` line or a macro call that is longer than 80 characters | Q-35 | Over-long lines are ordinary lines, comment lines or macro body lines only. |
+| A `mcroend` line while no definition is open, plain or as `L: mcroend` | Q-36 | Every `mcroend` line closes an open definition. |
+| Memory overflow together with another error at or before the line that crosses the limit | Q-37 | In the ERR-41 cases the first other erroneous line comes after the line that crosses the limit. |
 
 Also outside the suite: the inputs that SPEC declares undefined (nested macro
 definitions, a missing `mcroend`, a macro used before its definition, text
 before `mcroend`; MAC-6, MAC-7, MAC-8, MAC-20) and allocation failure
 (ERR-R10), which a test cannot provoke.
+
+Rules whose effect cannot be seen from outside, and what is checked instead:
+
+- MAC-38, "for a duplicate name the first definition remains in force": a
+  file with a duplicate definition gets no `.am` file, so *which* body a
+  later call would expand is invisible. The cases check what is visible:
+  the name is still a macro after the faulty second definition (a later call
+  with extra text is ERR-7, a label in front of a call is ERR-9).
+- MAC-37, "`L: m` is not expanded": no `.am` file is written for such a file.
+  The cases check the single message and the state of the macro table.
+- ERR-R16, "the first error found": which error of a line is reported is
+  free; only the count (one) is checked.
 
 ## Coverage
 
@@ -130,16 +200,16 @@ before `mcroend`; MAC-6, MAC-7, MAC-8, MAC-20) and allocation failure
 
 | ERR | Cases |
 |---|---|
-| ERR-1 | `cli/missing_file_last`, `cli/missing_file_only`, `cli/as_suffix_argument` |
-| ERR-2 | `errors/macro_name_reserved`, `errors/macro_name_reserved_mcro` |
-| ERR-3 | `errors/macro_def_extra_text`, `errors/preassembler_error_hides_pass_errors` |
-| ERR-4 | `errors/macro_end_extra_text` |
-| ERR-5 | `errors/macro_name_missing` |
-| ERR-6 | `errors/macro_name_invalid`, `errors/macro_name_too_long` |
-| ERR-7 | `errors/macro_call_extra_text` |
-| ERR-8 | `errors/macro_duplicate_name` |
-| ERR-9 | not tested (Q-28) |
-| ERR-10 | `errors/line_too_long` |
+| ERR-1 | `cli/missing_file_last`, `cli/missing_file_only`, `cli/missing_file_first`, `cli/missing_file_middle`, `cli/missing_files_several`, `cli/as_suffix_argument`, `cli/order_several_files`, `cli/stale_files_of_missing_file` |
+| ERR-2 | `errors/macro_name_reserved`, `errors/macro_name_reserved_mcro`, `errors/faulty_mcro_body_is_silent` |
+| ERR-3 | `errors/macro_def_extra_text`, `errors/preassembler_error_hides_pass_errors`, `errors/faulty_mcro_body_is_silent`, `errors/faulty_mcro_name_is_not_a_macro` |
+| ERR-4 | `errors/macro_end_extra_text`, `errors/one_message_per_line_preassembler` |
+| ERR-5 | `errors/macro_name_missing`, `errors/faulty_mcro_body_is_silent` |
+| ERR-6 | `errors/macro_name_invalid`, `errors/macro_name_too_long`, `errors/faulty_mcro_body_is_silent` |
+| ERR-7 | `errors/macro_call_extra_text`, and as the probe for the state of the macro table in the `label_before_*` and `faulty_mcro_*` cases |
+| ERR-8 | `errors/macro_duplicate_name`, `errors/faulty_mcro_body_is_silent`, `errors/faulty_mcro_name_is_not_a_macro`, `errors/label_before_mcro` |
+| ERR-9 | `errors/label_before_mcro`, `errors/label_before_mcro_faulty`, `errors/label_before_mcroend`, `errors/label_before_macro_call`, `errors/faulty_mcro_name_is_not_a_macro`; not ERR-9: `errors/label_not_attached_macro_lines` |
+| ERR-10 | `errors/line_too_long`, `errors/crlf_line_too_long` |
 | ERR-11 | `errors/label_invalid_chars` |
 | ERR-12 | `errors/label_too_long` |
 | ERR-13 | `errors/label_reserved_word`, `errors/label_reserved_mcro` |
@@ -161,24 +231,36 @@ before `mcroend`; MAC-6, MAC-7, MAC-8, MAC-20) and allocation failure
 | ERR-29 | `errors/data_value_not_integer` |
 | ERR-30 | `errors/data_comma_errors` |
 | ERR-31 | `errors/string_malformed` |
-| ERR-32 | `errors/string_illegal_char` |
+| ERR-32 | `errors/string_illegal_char`, `errors/cr_inside_string` |
 | ERR-33 | `errors/mat_dimensions_malformed` |
-| ERR-34 | `errors/entry_extern_operand` |
+| ERR-34 | `errors/entry_extern_operand`, `errors/warning_line_with_error` |
 | ERR-35 | `errors/missing_space_after_operation` |
 | ERR-36 | `errors/missing_space_after_directive` |
 | ERR-37 | `errors/matrix_operand_whitespace` |
 | ERR-38 | `errors/label_no_space_after_colon` |
 | ERR-39 | `errors/immediate_out_of_range`, `errors/data_out_of_range` |
 | ERR-40 | `errors/mat_too_many_values` |
-| ERR-41 | `errors/memory_overflow` |
+| ERR-41 | `errors/memory_overflow`, `errors/memory_overflow_reported_once`, `errors/memory_overflow_data_before_code`, `errors/memory_overflow_code_only`, `errors/memory_overflow_in_macro` |
 | ERR-42 | `errors/matrix_operand_no_label` |
 | ERR-43 | `errors/semicolon_not_first` |
 | ERR-44 | `errors/mat_dimension_invalid` |
 | ERR-45 | `errors/label_alone` |
-| ERR-50 | `errors/undefined_symbol`, `errors/line_numbers_second_pass_macro` |
+| ERR-50 | `errors/undefined_symbol`, `errors/line_numbers_second_pass_macro`, `errors/one_message_per_line_second_pass`, `errors/order_first_pass_before_second_pass`, `errors/warning_label_is_not_defined`, `errors/macro_name_not_first_word` |
 | ERR-51 | `errors/entry_undefined`, `errors/line_numbers_second_pass_macro` |
 | ERR-52 | `errors/entry_and_extern` |
-| ERR-53 | `errors/extern_then_label`, `errors/label_then_extern` |
+| ERR-53 | `errors/extern_then_label`, `errors/label_then_extern`, `errors/extern_label_conflict_data`, `errors/warning_line_with_error` |
+| WRN-1 | `valid/warning_label_before_entry`, `valid/warning_label_before_extern`, `valid/warning_label_not_in_symbol_table`, `valid/warning_in_macro_body`, `errors/warning_label_is_not_defined`, `errors/warning_line_with_error`, `errors/order_first_pass_before_second_pass`, `errors/order_macro_defined_late`, `cli/warnings_only_status_zero`, `cli/missing_file_middle`, `cli/order_several_files` |
+
+### Rules about the output as a whole
+
+| Rule | Cases |
+|---|---|
+| ERR-R15 (nothing but diagnostics on `stdout`) | every case, through the runner; `cli/no_arguments` for the usage line (CLI-10) |
+| ERR-R16 (one message per line) | `errors/one_message_per_line`, `errors/one_message_per_line_preassembler`, `errors/one_message_per_line_second_pass`, `errors/warning_line_with_error`, and the `label_before_*` and `faulty_mcro_*` cases |
+| ERR-R17 (order) | every case, through the runner; specifically `errors/order_first_pass_before_second_pass`, `errors/order_macro_body_called_twice`, `errors/order_macro_defined_late`, `errors/line_numbers_in_macro_body`, `errors/line_numbers_second_pass_macro`, `cli/order_several_files`, `cli/missing_file_middle` |
+| OUT-14 (stale files) | `valid/stale_ent_ext_removed`, `valid/stale_files_replaced`, `valid/stale_ext_removed_extern_unused`, `errors/stale_files_preassembler_error`, `errors/stale_files_first_pass_error`, `errors/stale_files_second_pass_error`, `cli/stale_files_of_missing_file` |
+| SYN-24, SYN-25, OUT-15 | `valid/last_line_no_newline`, `valid/last_line_cr_no_newline`, `valid/comment_only_no_newline`, `valid/crlf_line_endings`, `valid/cr_inside_line`, `valid/empty_file`, `valid/comments_only`, `errors/crlf_line_too_long`, `errors/cr_inside_string` |
+| CLI-10, CLI-11 | `cli/no_arguments`; `cli/missing_file_first`, `cli/missing_file_middle`, `cli/missing_files_several`, `cli/missing_file_last` |
 
 ### Valid programs (`tests/valid`)
 
@@ -240,6 +322,25 @@ before `mcroend`; MAC-6, MAC-7, MAC-8, MAC-20) and allocation failure
 | `macro_whitespace` | MAC-19, MAC-30, MAC-29 | Whitespace before and after mcro, the macro name, mcroend and a macro call. |
 | `macro_with_directives` | MAC-24, MAC-29, MAC-4 | Macro bodies holding labels and directives; the passes see only the expanded text. |
 | `macro_name_not_first_field` | MAC-3, MAC-16 | A macro name inside a comment or a string is not a call. |
+| `warning_label_before_entry` | WRN-1, DIR-35, DIR-18, ERR-R14 | A label in front of .entry: a warning on that line, all outputs written, status 0. |
+| `warning_label_before_extern` | WRN-1, DIR-35, DIR-22 | A label in front of .extern: a warning, the .ext file is still written. |
+| `warning_label_not_in_symbol_table` | DIR-35, WRN-1 | The ignored label is not a symbol: the same name is defined elsewhere, twice in front of directives, and names that are invalid, reserved, too long, empty or macro names are accepted. |
+| `warning_in_macro_body` | DIR-35, ERR-R12, ERR-R17 | A warning line inside a macro body is reported once per call, with the body line number. |
+| `stale_ent_ext_removed` | OUT-14, OUT-2 | Stale .ent and .ext are removed when the successful run does not produce them; stale .am and .ob are replaced. |
+| `stale_files_replaced` | OUT-14 | All four stale files are replaced by the files of this run. |
+| `stale_ext_removed_extern_unused` | OUT-14, OUT-13 | A stale .ext is removed when .extern is declared but never used; a stale .ent is replaced. |
+| `last_line_no_newline` | SYN-24, MAC-29 | The last line has no newline: it is a complete line and the .am file ends with a newline. |
+| `last_line_cr_no_newline` | SYN-25, SYN-24 | A CR at the end of a last line without a newline is ordinary whitespace and is copied to .am. |
+| `comment_only_no_newline` | SYN-24, OUT-15 | One comment line without a newline: .am gets the newline, .ob is the header a TAB a. |
+| `crlf_line_endings` | SYN-25, MAC-29, SYN-2 | CR LF input with a macro: the .am file has LF endings; lines of 80 characters plus CR LF are legal. |
+| `cr_inside_line` | SYN-25, SYN-8 | A lone CR inside a line is whitespace and is copied to .am; of CR CR LF only the last CR is dropped. |
+| `empty_file` | OUT-15 | A file of zero bytes: empty .am, .ob with the single line a TAB a, status 0. |
+| `comments_only` | OUT-15, MAC-29 | Only comment lines and empty lines: .am is a copy, .ob is a TAB a. |
+| `whitespace_vt_ff` | SYN-8 | Vertical tab and form feed as whitespace between all kinds of fields and as an empty line. |
+| `label_indented` | SYN-19, LBL-4 | Label definitions after leading spaces and tabs. |
+| `string_colon_unlabelled` | SYN-22, DIR-28 | A colon inside a string on a line without a label is not a label definition. |
+| `memory_full_code_only` | ALG-15, OUT-13 | Exactly 156 code words and no data. |
+| `memory_full_data_before_code` | ALG-15, ALG-5 | Exactly 156 words where the data lines come before the code lines. |
 
 ### Programs with errors (`tests/errors`)
 
@@ -294,9 +395,9 @@ before `mcroend`; MAC-6, MAC-7, MAC-8, MAC-20) and allocation failure
 | `entry_extern_operand` | ERR-34, DIR-17, DIR-20 | .entry and .extern with no operand, two operands or an ill-formed name. |
 | `missing_space_after_directive` | ERR-36, SYN-17 | No whitespace between a directive name and its operand. |
 | `semicolon_not_first` | ERR-43, SYN-9 | A semicolon after leading whitespace or after a statement does not start a comment. |
-| `memory_overflow` | ERR-41, ALG-15 | 157 words: one word more than the memory holds. Only the severity is asserted (Q-30). |
-| `extern_then_label` | ERR-53, DIR-30 | A symbol declared .extern and then defined as a label; reported in the first pass. |
-| `label_then_extern` | ERR-53, DIR-30 | A label defined and then declared .extern. Only the severity is asserted (Q-30). |
+| `memory_overflow` | ERR-41, ALG-15, ALG-17 | 157 words: one word more than the memory holds; reported on the line that adds the 157th word. |
+| `extern_then_label` | ERR-53, DIR-30, DIR-36 | A symbol declared .extern and then defined as a label: reported on the label line. |
+| `label_then_extern` | ERR-53, DIR-30, DIR-36 | A label defined and then declared .extern: reported on the .extern line. |
 | `first_pass_error_hides_second_pass` | ERR-R7, ERR-17, SPEC 5.3 | After a first-pass error the second pass does not run: the undefined symbol is not reported. |
 | `line_numbers_after_macro` | ERR-R12, MAC-35, ERR-R3, ERR-17, ERR-20 | First-pass errors on lines after macro definitions and after macro calls carry .as line numbers. |
 | `line_numbers_in_macro_body` | ERR-R12, MAC-35, MAC-13, ERR-17, ERR-20 | First-pass errors inside macro bodies: the body line number, once per call. |
@@ -304,6 +405,32 @@ before `mcroend`; MAC-6, MAC-7, MAC-8, MAC-20) and allocation failure
 | `entry_undefined` | ERR-51, DIR-19 | .entry naming a symbol that is not in the symbol table. |
 | `entry_and_extern` | ERR-52, DIR-23 | The same symbol declared .entry and .extern, in both orders; reported on the .entry line. |
 | `line_numbers_second_pass_macro` | ERR-R12, MAC-35, ERR-50, ERR-51 | Second-pass errors after and inside macro expansions carry .as line numbers; a body line once per call. |
+| `extern_label_conflict_data` | ERR-53, DIR-36 | Both orders with data labels (.data, .string, .mat) and a code label; each reported once, on the second of the two lines. |
+| `memory_overflow_reported_once` | ERR-41, ALG-17, ERR-R4 | A multi-word line crosses the limit; later lines add words without a second report; later unrelated errors are still reported. |
+| `memory_overflow_data_before_code` | ERR-41, ALG-17 | 153 data words come first; an instruction line crosses the limit and is the line reported. |
+| `memory_overflow_code_only` | ERR-41, ALG-17 | 157 code words and no data. |
+| `memory_overflow_in_macro` | ERR-41, ALG-17, ERR-R12 | The line that crosses the limit comes from a macro body: its body line number, once, although later calls add more words. |
+| `warning_label_is_not_defined` | DIR-35, ERR-50, ERR-R17 | The label in front of .extern is not a symbol: using it is an undefined symbol; the warning comes before the second-pass error. |
+| `warning_line_with_error` | DIR-35, ERR-R16, ERR-34, ERR-53, ERR-38, ERR-16 | A labelled .entry or .extern line with an error of its own prints only the error; `L:.extern` and `L : .extern` are errors, not warnings. |
+| `label_before_mcro` | ERR-9, MAC-36, MAC-37 | `L: mcro x`: one message; the definition is opened (its body is silent), closed by mcroend, and x is in the macro table. |
+| `label_before_mcro_faulty` | ERR-9, MAC-37, MAC-38 | `L: mcro` with a reserved name, extra text or a duplicate name: one message, body discarded silently, the name is not entered. |
+| `label_before_mcroend` | ERR-9, MAC-36, MAC-37 | `L: mcroend`, also with extra text: one message; the definition is closed and the macro is defined. |
+| `label_before_macro_call` | ERR-9, MAC-36, MAC-37 | `L: m`, also with extra text and with an invalid label: one message each; `L : m` and `L:m` are not recognised. |
+| `label_not_attached_macro_lines` | MAC-36, ERR-16, ERR-38 | `L : m`, `L:m`, `L : mcro x`, `L:mcro y` are ordinary lines: copied to .am and rejected by the first pass. |
+| `faulty_mcro_body_is_silent` | MAC-38, ERR-2, ERR-3, ERR-5, ERR-6, ERR-8 | After each kind of faulty mcro line the body is silent: over-long lines, calls with extra text, text after mcroend, a label before mcroend. |
+| `faulty_mcro_name_is_not_a_macro` | MAC-38, ERR-3, ERR-8, ERR-7, ERR-9 | A name whose definition was faulty is not a macro; after a duplicate definition the name is still a macro. |
+| `one_message_per_line` | ERR-R16 | First-pass lines with two or three errors each yield one message. |
+| `one_message_per_line_preassembler` | ERR-R16, MAC-38 | Pre-assembler lines with several errors each yield one message. |
+| `one_message_per_line_second_pass` | ERR-R16, ERR-50 | Lines with two undefined symbols yield one message. |
+| `order_first_pass_before_second_pass` | ERR-R17, WRN-1 | Warnings of the first pass come before second-pass errors that stand on earlier lines. |
+| `order_macro_body_called_twice` | ERR-R17, ERR-R12 | Errors in a macro body called twice, between other errors: the order of the .am file. |
+| `order_macro_defined_late` | ERR-R17, ERR-R12 | Macros defined after erroneous lines and called in another order: line numbers are not ascending; a warning keeps its place among the errors. |
+| `stale_files_preassembler_error` | OUT-14, MAC-23 | Stale .am, .ob, .ent and .ext are all removed when the pre-assembler fails. |
+| `stale_files_first_pass_error` | OUT-14, OUT-11, ERR-R6 | A first-pass error: stale .ob, .ent and .ext are removed, the stale .am is replaced. |
+| `stale_files_second_pass_error` | OUT-14, OUT-11, ERR-R6 | The same for a second-pass error. |
+| `crlf_line_too_long` | SYN-25, ERR-10 | CR LF input: 80 characters plus CR LF is legal, 81 is an error, and 80 plus CR CR LF is 81 characters. |
+| `cr_inside_string` | SYN-25, ERR-32 | A CR inside a string is an illegal character; the .am file has LF endings and keeps the inner CR. |
+| `macro_name_not_first_word` | MAC-3, MAC-16, ERR-50 | A macro name used as an operand is not expanded (the .am file keeps the line) and is an undefined symbol. |
 
 ### Command line (`tests/cli`)
 
@@ -314,7 +441,13 @@ before `mcroend`; MAC-6, MAC-7, MAC-8, MAC-20) and allocation failure
 | `error_then_valid` | CLI-3, CLI-9, ERR-R6, OUT-11 | A file with a first-pass error followed by a valid file: the valid one is still assembled, status 1. |
 | `valid_then_error` | CLI-3, CLI-9, ERR-R6 | A valid file followed by a file with a first-pass error: the outputs of the valid one stay, status 1. |
 | `preassembler_error_then_valid` | MAC-11, MAC-23, CLI-9 | A file with a pre-assembler error followed by a valid file: no .am for the first, the second is assembled. |
-| `missing_file_last` | ERR-1, CLI-6, CLI-9, ERR-R13 | A valid file followed by a name with no .as file: message without a line number, status 1. |
+| `missing_file_last` | ERR-1, CLI-6, CLI-9, CLI-11, ERR-R13 | A valid file followed by a name with no .as file: message without a line number, status 1. |
 | `missing_file_only` | ERR-1, CLI-6, CLI-9 | The only argument names a file that does not exist. |
 | `as_suffix_argument` | ERR-1, CLI-8 | The argument prog.as while prog.as exists: the assembler looks for prog.as.as and reports it. |
-| `no_arguments` | CLI-5, CLI-9 | No file arguments: not an error, status 0. |
+| `no_arguments` | CLI-5, CLI-9, CLI-10 | No file arguments: exactly one usage line that is not a diagnostic, status 0, no file created. |
+| `missing_file_first` | CLI-11, ERR-1 | The first argument cannot be opened: the next file is still assembled, status 1. |
+| `missing_file_middle` | CLI-11, ERR-R17 | A missing file between other files: its message stands between theirs, the files after it are processed. |
+| `missing_files_several` | CLI-11, ERR-1 | Three missing arguments (one name twice) around a valid file: one message each, in order. |
+| `order_several_files` | ERR-R17, CLI-3 | Five arguments with first-pass errors, pre-assembler errors, a missing file, a warning plus a second-pass error, and a warning: messages in command-line order. |
+| `warnings_only_status_zero` | ERR-R14, CLI-9, WRN-1 | Two files whose only messages are warnings: outputs written, status 0. |
+| `stale_files_of_missing_file` | OUT-14, CLI-11 | Stale outputs of a name whose .as file does not exist are removed; stale .ent and .ext of the valid file too. |

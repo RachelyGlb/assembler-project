@@ -1,0 +1,8 @@
+zeta.as 2 error
+zeta.as 4 error
+alpha.as 1 error
+alpha.as 5 error
+nosuch.as - error
+mid.as 3 warning
+mid.as 2 error
+beta.as 1 warning

@@ -1,0 +1,5 @@
+.entry MAIN
+.extern W
+MAIN:   jmp W
+        inc r1
+        stop

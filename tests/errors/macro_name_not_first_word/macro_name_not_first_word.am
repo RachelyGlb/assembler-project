@@ -1,0 +1,6 @@
+MAIN:   clr r1
+        inc mac
+        inc r1
+        mov r1, mac
+        cmp mac[r1][r2], #1
+        stop

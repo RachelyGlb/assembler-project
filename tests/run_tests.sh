@@ -14,8 +14,13 @@
 #               relative path is resolved against the current directory.
 #
 # For every case the inputs are copied into a fresh scratch directory under
-# tests/out/<group>/<case>/, the binary is run there, and the result is
-# compared with the expected files stored next to the input. The scratch
+# tests/out/<group>/<case>/, together with the files of the optional
+# directory stale/ of the case (files "left over from an earlier run", SPEC
+# OUT-14). The binary is run there, and the result is compared with the
+# expected files stored next to the input. Standard output is compared in
+# full: the diagnostics in their order (SPEC ERR-R17), and no other line may
+# appear (SPEC ERR-R15) except the usage line of a run without arguments
+# (SPEC CLI-10). The scratch
 # directory of a passing case is removed; the scratch directory of a failing
 # case is kept, together with diff.txt (what differed), stdout.txt and
 # stderr.txt.
@@ -33,6 +38,8 @@ TESTS_DIR=$(cd "$(dirname "$0")" && pwd)
 OUT_DIR=$TESTS_DIR/out
 GROUPS_ALL="valid errors cli"
 OUTPUT_EXTS="am ob ent ext"
+STALE_DIR=stale
+OTHER_LINES_FILE=expected_other_lines
 TIME_LIMIT=5
 STATUS_TIMEOUT=124
 STATUS_SIGNAL_BASE=128
@@ -76,7 +83,11 @@ fail() {
     printf '== %s\n' "$1" >> "$scratch/diff.txt"
 }
 
-# Creates the empty scratch directory of a case and copies its inputs.
+# Creates the empty scratch directory of a case and copies its inputs: the
+# .as files, and the files of the directory stale/ if the case has one. The
+# stale files stand for output files left over from an earlier run; the
+# usual checks ("must not exist", "must be identical") then prove that the
+# assembler removed or replaced them (SPEC OUT-14).
 #   $1  group, $2  case name, $3  case directory
 prepare() {
     scratch=$OUT_DIR/$1/$2
@@ -87,6 +98,11 @@ prepare() {
     for src in "$3"/*.as; do
         [ -f "$src" ] && cp "$src" "$scratch/"
     done
+    if [ -d "$3/$STALE_DIR" ]; then
+        for src in "$3/$STALE_DIR"/*; do
+            [ -f "$src" ] && cp "$src" "$scratch/"
+        done
+    fi
 }
 
 # Runs the binary inside the scratch directory with the given arguments.
@@ -134,7 +150,7 @@ ends_with_newline() {
 check_file() {
     if [ ! -f "$1/$2" ]; then
         if [ -e "$scratch/$2" ]; then
-            fail "$2 was created but must not exist"
+            fail "$2 exists but must not exist"
         fi
         return
     fi
@@ -167,80 +183,111 @@ check_outputs() {
     check_file "$1" "$2.ext" anyorder
 }
 
+# The four forms of a diagnostic line (SPEC ERR-R13, ERR-R14), as basic
+# regular expressions. The file name holds no colon and no space.
+RE_NAME='[^: ]*\.as'
+RE_LINE='[1-9][0-9]*'
+RE_ERROR_LINE="^\\($RE_NAME\\):\\($RE_LINE\\): error: ..*\$"
+RE_WARNING_LINE="^\\($RE_NAME\\):\\($RE_LINE\\): warning: ..*\$"
+RE_ERROR_NOLINE="^\\($RE_NAME\\): error: ..*\$"
+RE_WARNING_NOLINE="^\\($RE_NAME\\): warning: ..*\$"
+
 # Writes the diagnostics found in stdout.txt to messages.actual, one per line
-# as "<file> <line> <severity>", sorted; <line> is "-" for a message without
-# a line number. Only lines in the format of SPEC ERR-R13 and ERR-R14 count;
-# the text of a message is never looked at.
+# as "<file> <line> <severity>", in the order in which they were printed
+# (SPEC ERR-R17); <line> is "-" for a message without a line number. The
+# text of a message is never looked at.
 extract_messages() {
     sed -n \
-        -e 's/^\(.*\.as\):\([1-9][0-9]*\): error: ..*$/\1 \2 error/p' \
-        -e 's/^\(.*\.as\):\([1-9][0-9]*\): warning: ..*$/\1 \2 warning/p' \
-        -e 's/^\(.*\.as\): error: ..*$/\1 - error/p' \
-        -e 's/^\(.*\.as\): warning: ..*$/\1 - warning/p' \
-        "$scratch/stdout.txt" | LC_ALL=C sort > "$scratch/messages.actual"
+        -e "s/$RE_ERROR_LINE/\\1 \\2 error/p" \
+        -e "s/$RE_WARNING_LINE/\\1 \\2 warning/p" \
+        -e "s/$RE_ERROR_NOLINE/\\1 - error/p" \
+        -e "s/$RE_WARNING_NOLINE/\\1 - warning/p" \
+        "$scratch/stdout.txt" > "$scratch/messages.actual"
 }
 
-# Compares messages.actual with messages.expected.
+# Checks the lines of stdout.txt that are not diagnostics. SPEC ERR-R15
+# allows none; the only exception is the single usage line of a run without
+# arguments (SPEC CLI-10).
+#   $1  the number of such lines that is expected
+check_other_lines() {
+    grep -v -e "$RE_ERROR_LINE" -e "$RE_WARNING_LINE" \
+        -e "$RE_ERROR_NOLINE" -e "$RE_WARNING_NOLINE" \
+        "$scratch/stdout.txt" > "$scratch/stdout.other"
+    others=$(grep -c '' "$scratch/stdout.other")
+    if [ "$others" -ne "$1" ]; then
+        fail "stdout has $others non-diagnostic line(s), expected $1"
+        cat "$scratch/stdout.other" >> "$scratch/diff.txt"
+    fi
+}
+
+# Compares messages.actual with messages.expected, line by line and in
+# order.
 compare_messages() {
     if ! diff "$scratch/messages.expected" "$scratch/messages.actual" \
             > "$scratch/messages.diff" 2>&1; then
-        fail "diagnostics differ (expected < > actual)"
+        fail "diagnostics differ in content or order (expected < > actual)"
         cat "$scratch/messages.diff" >> "$scratch/diff.txt"
     fi
 }
 
 # Rewrites messages.actual for a single-file case: the file name is dropped
 # when it is the expected one ("<line> <severity>"), and kept otherwise, so
-# that a message naming another file can never match.
+# that a message naming another file can never match. The order is kept.
 #   $1  expected file name in messages (<case>.as)
 reduce_messages() {
     awk -v want="$1" '{
         if ($1 == want) print $2, $3
         else print $1 ":" $2, $3
-    }' "$scratch/messages.actual" | LC_ALL=C sort > "$scratch/messages.reduced"
+    }' "$scratch/messages.actual" > "$scratch/messages.reduced"
     mv "$scratch/messages.reduced" "$scratch/messages.actual"
 }
 
+# Checks the whole of stdout of a single-file case against <case>.expected:
+# the diagnostics in order and nothing else. A case without that file
+# expects an empty stdout.
+#   $1  case name, $2  case directory
+check_stdout_single() {
+    check_other_lines 0
+    extract_messages
+    reduce_messages "$1.as"
+    if [ -f "$2/$1.expected" ]; then
+        cp "$2/$1.expected" "$scratch/messages.expected"
+    else
+        : > "$scratch/messages.expected"
+    fi
+    compare_messages
+}
+
 # A valid case: exit status 0, every expected file identical, no other
-# output file, no error message.
+# output file, and on stdout exactly the warnings of <case>.expected (a case
+# without that file prints nothing at all).
 #   $1  case name, $2  case directory
 run_valid() {
     prepare valid "$1" "$2"
     run_binary "$1" || return
     check_status 0
     check_outputs "$2" "$1"
-    extract_messages
-    if grep -q ' error$' "$scratch/messages.actual"; then
-        fail "error message printed for a valid file"
-        cat "$scratch/messages.actual" >> "$scratch/diff.txt"
-    fi
+    check_stdout_single "$1" "$2"
 }
 
-# An error case: exit status 1, the diagnostics of <case>.expected, no .ob,
-# .ent or .ext, and an .am file only if an expected one exists. A line
-# "* <severity>" in <case>.expected means that only the severity of every
-# message is compared (the line number is undecided in SPEC 6.1).
+# An error case: exit status 1, the diagnostics of <case>.expected in that
+# order and nothing else on stdout, no .ob, .ent or .ext, and an .am file
+# only if an expected one exists.
 #   $1  case name, $2  case directory
 run_errors() {
     prepare errors "$1" "$2"
     run_binary "$1" || return
     check_status 1
     check_outputs "$2" "$1"
-    extract_messages
-    reduce_messages "$1.as"
-    LC_ALL=C sort "$2/$1.expected" > "$scratch/messages.expected"
-    if grep -q '^\*' "$scratch/messages.expected"; then
-        awk '{ print "*", $NF }' "$scratch/messages.actual" | LC_ALL=C sort \
-            > "$scratch/messages.reduced"
-        mv "$scratch/messages.reduced" "$scratch/messages.actual"
-    fi
-    compare_messages
+    check_stdout_single "$1" "$2"
 }
 
 # A command-line case: the arguments come from the file "args", the exit
-# status from "expected_status", the diagnostics from "expected_messages"
-# (no such file: none expected). Every expected output file must be
-# identical and no other output file may exist.
+# status from "expected_status", the diagnostics, in order, from
+# "expected_messages" (no such file: none expected), and the number of
+# stdout lines that are not diagnostics from "expected_other_lines" (no such
+# file: none allowed). Every expected output file must be identical and no
+# other output file may exist.
 #   $1  case name, $2  case directory
 run_cli() {
     prepare cli "$1" "$2"
@@ -266,9 +313,14 @@ run_cli() {
             [ -f "$2/$name" ] || check_file "$2" "$name" "$mode"
         done
     done
+    if [ -f "$2/$OTHER_LINES_FILE" ]; then
+        check_other_lines "$(cat "$2/$OTHER_LINES_FILE")"
+    else
+        check_other_lines 0
+    fi
     extract_messages
     if [ -f "$2/expected_messages" ]; then
-        LC_ALL=C sort "$2/expected_messages" > "$scratch/messages.expected"
+        cp "$2/expected_messages" "$scratch/messages.expected"
     else
         : > "$scratch/messages.expected"
     fi
